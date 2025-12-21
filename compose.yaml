@@ -1,0 +1,45 @@
+# Orion-Sentinel-DataAICore - Main Compose File
+# Dell OptiPlex 7080 Micro - Cloud, Search, and AI Stack
+#
+# This file uses Docker Compose include directive to load stack-specific files.
+# Manage services using the orionctl script.
+#
+# Usage:
+#   ./scripts/orionctl up nextcloud         # Start Nextcloud
+#   ./scripts/orionctl up websearch         # Start SearXNG
+#   ./scripts/orionctl up llm               # Start Ollama + Open WebUI
+#   ./scripts/orionctl up core              # Start all core services
+#
+# Or use docker compose directly:
+#   docker compose --profile nextcloud up -d
+#   docker compose --profile websearch up -d
+#   docker compose --profile llm up -d
+#
+# Optional public Nextcloud (Phase 2):
+#   ./scripts/orionctl up nextcloud public-nextcloud
+#
+# To edit stack configurations:
+#   sudo nano stacks/nextcloud/compose.yaml
+#   sudo nano stacks/websearch/compose.yaml
+#   sudo nano stacks/llm/compose.yaml
+
+include:
+  # Nextcloud + Postgres + Redis (profile: nextcloud)
+  - path: stacks/nextcloud/compose.yaml
+    env_file: .env
+
+  # SearXNG web search (profile: websearch)
+  # Note: Phase 1 - No Meilisearch/Tika/Valkey for local docs
+  - path: stacks/websearch/compose.yaml
+    env_file: .env
+
+  # Ollama + Open WebUI (profile: llm)
+  - path: stacks/llm/compose.yaml
+    env_file: .env
+
+  # Optional: Caddy reverse proxy for public Nextcloud (profile: public-nextcloud)
+  - path: stacks/public-nextcloud/compose.yaml
+    env_file: .env
+
+# The dataaicore_internal network is created by the first stack to start.
+# All services communicate via this internal Docker network.

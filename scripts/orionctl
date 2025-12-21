@@ -1,0 +1,402 @@
+#!/usr/bin/env bash
+# ============================================================================
+# Orion-Sentinel-DataAICore Control Script (orionctl)
+# Wrapper for Docker Compose operations with profile and stack handling
+#
+# Usage:
+#   ./scripts/orionctl <command> [stack|profile] [options]
+#
+# Examples:
+#   ./scripts/orionctl up core              # Start all core services
+#   ./scripts/orionctl up nextcloud         # Start Nextcloud stack
+#   ./scripts/orionctl down                 # Stop all services
+#   ./scripts/orionctl ps                   # Show running containers
+#   ./scripts/orionctl logs nextcloud       # View Nextcloud logs
+#   ./scripts/orionctl doctor               # Run health checks
+#
+# ============================================================================
+
+set -euo pipefail
+
+# Colors
+RED='\033[0;31m'
+GREEN='\033[0;32m'
+YELLOW='\033[1;33m'
+BLUE='\033[0;34m'
+CYAN='\033[0;36m'
+NC='\033[0m'
+
+# Script location
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+REPO_ROOT="$(dirname "$SCRIPT_DIR")"
+
+cd "$REPO_ROOT"
+
+# ============================================================================
+# Helper Functions
+# ============================================================================
+
+info() {
+    echo -e "${BLUE}ℹ${NC} $*"
+}
+
+success() {
+    echo -e "${GREEN}✓${NC} $*"
+}
+
+warn() {
+    echo -e "${YELLOW}⚠${NC} $*"
+}
+
+error() {
+    echo -e "${RED}✗${NC} $*"
+    exit 1
+}
+
+# Check .env exists
+check_env() {
+    if [ ! -f ".env" ]; then
+        error ".env file not found. Run ./scripts/bootstrap-dataaicore.sh first"
+    fi
+}
+
+# Build profile arguments for docker compose
+build_profile_args() {
+    local profiles=("$@")
+    local args=""
+    for profile in "${profiles[@]}"; do
+        args="$args --profile $profile"
+    done
+    echo "$args"
+}
+
+# Expand bundle names to profile list
+expand_bundle() {
+    local name="$1"
+    case "$name" in
+        core)
+            echo "nextcloud websearch llm"
+            ;;
+        *)
+            echo "$name"
+            ;;
+    esac
+}
+
+# ============================================================================
+# Usage
+# ============================================================================
+
+usage() {
+    cat << EOF
+${CYAN}Orion-Sentinel-DataAICore Control Script${NC}
+
+${YELLOW}Usage:${NC}
+  $0 COMMAND [STACK|PROFILE...] [OPTIONS]
+
+${YELLOW}Commands:${NC}
+  up [stacks...]      Start services with specified profiles
+  down [stack]        Stop services (all or specific stack)
+  ps                  Show running containers
+  logs [service]      View logs (all services or specific)
+  doctor              Run health checks
+  update              Pull latest images and restart
+
+${YELLOW}Stacks/Profiles:${NC}
+  nextcloud           Nextcloud + Postgres + Redis
+  websearch           SearXNG web search
+  llm                 Ollama + Open WebUI
+  public-nextcloud    Caddy reverse proxy (optional, Phase 2)
+
+${YELLOW}Bundles:${NC}
+  core                All core services (nextcloud + websearch + llm)
+
+${YELLOW}Examples:${NC}
+  $0 up core                         # Start all core services
+  $0 up nextcloud                    # Start Nextcloud only
+  $0 up nextcloud websearch          # Start Nextcloud and SearXNG
+  $0 up nextcloud public-nextcloud   # Start Nextcloud with public access
+  $0 down                            # Stop all services
+  $0 down nextcloud                  # Stop only Nextcloud
+  $0 ps                              # Show running containers
+  $0 logs nextcloud                  # View Nextcloud logs
+  $0 logs -f searxng                 # Follow SearXNG logs
+  $0 doctor                          # Run health checks
+  $0 update                          # Pull and restart
+
+${YELLOW}Notes:${NC}
+  - All services are LOCAL ONLY by default
+  - Use 'public-nextcloud' profile only for internet-exposed Nextcloud
+  - See INSTALL.md for complete setup guide
+
+EOF
+}
+
+# ============================================================================
+# Commands
+# ============================================================================
+
+cmd_up() {
+    check_env
+
+    if [ $# -eq 0 ]; then
+        error "At least one stack/profile required. Use: $0 up nextcloud|websearch|llm|core"
+    fi
+
+    # Expand bundles and collect profiles
+    local profiles=()
+    for arg in "$@"; do
+        expanded=$(expand_bundle "$arg")
+        for p in $expanded; do
+            profiles+=("$p")
+        done
+    done
+
+    # Remove duplicates using associative array
+    declare -A seen
+    local unique_profiles=()
+    for p in "${profiles[@]}"; do
+        if [[ -z "${seen[$p]:-}" ]]; then
+            seen[$p]=1
+            unique_profiles+=("$p")
+        fi
+    done
+    profiles=("${unique_profiles[@]}")
+
+    info "Starting DataAICore with profiles: ${profiles[*]}"
+
+    # Build and run docker compose
+    local profile_args=$(build_profile_args "${profiles[@]}")
+    eval "docker compose $profile_args up -d"
+
+    echo ""
+    success "DataAICore started"
+    echo ""
+    info "Access points:"
+
+    # Show access info based on profiles
+    source .env 2>/dev/null || true
+    local host="${HOST_IP:-localhost}"
+
+    for profile in "${profiles[@]}"; do
+        case "$profile" in
+            nextcloud)
+                echo "  • Nextcloud:   http://${host}:8080"
+                echo "    Credentials: Check .env for NEXTCLOUD_ADMIN_USER/PASSWORD"
+                ;;
+            websearch)
+                echo "  • SearXNG:     http://${host}:${SEARXNG_PORT:-8888}"
+                ;;
+            llm)
+                echo "  • Open WebUI:  http://${host}:3000"
+                echo "    Pull model:  ./scripts/pull-model.sh llama3.2:3b"
+                ;;
+            public-nextcloud)
+                echo "  • Public:      https://cloud.\${ORION_DOMAIN}"
+                warn "Ensure DNS and port forwarding (443) are configured!"
+                ;;
+        esac
+    done
+    echo ""
+}
+
+cmd_down() {
+    info "Stopping DataAICore services..."
+
+    if [ $# -eq 0 ]; then
+        # Stop all
+        docker compose --profile nextcloud --profile websearch --profile llm --profile public-nextcloud down
+    else
+        # Stop specific profile
+        local profile_args=$(build_profile_args "$@")
+        eval "docker compose $profile_args down"
+    fi
+
+    success "Services stopped"
+}
+
+cmd_ps() {
+    info "DataAICore services:"
+    docker compose --profile nextcloud --profile websearch --profile llm --profile public-nextcloud ps
+}
+
+cmd_logs() {
+    local follow=""
+    local service=""
+
+    # Parse arguments
+    while [ $# -gt 0 ]; do
+        case "$1" in
+            -f|--follow)
+                follow="-f"
+                shift
+                ;;
+            *)
+                service="$1"
+                shift
+                ;;
+        esac
+    done
+
+    if [ -z "$service" ]; then
+        info "Showing logs for all services (Ctrl+C to exit)..."
+        docker compose --profile nextcloud --profile websearch --profile llm --profile public-nextcloud logs $follow
+    else
+        info "Showing logs for $service (Ctrl+C to exit)..."
+        docker compose --profile nextcloud --profile websearch --profile llm --profile public-nextcloud logs $follow "$service"
+    fi
+}
+
+cmd_doctor() {
+    echo ""
+    echo "╔════════════════════════════════════════════════════════════════╗"
+    echo "║               DataAICore Health Check                          ║"
+    echo "╚════════════════════════════════════════════════════════════════╝"
+    echo ""
+
+    local status=0
+
+    # Docker daemon
+    info "Checking Docker daemon..."
+    if docker info &>/dev/null; then
+        success "Docker daemon is running"
+    else
+        error "Docker daemon is not running"
+        status=1
+    fi
+
+    # Docker Compose
+    info "Checking Docker Compose..."
+    if docker compose version &>/dev/null; then
+        local version=$(docker compose version --short)
+        success "Docker Compose $version"
+    else
+        error "Docker Compose not found"
+        status=1
+    fi
+
+    # .env file
+    info "Checking .env file..."
+    if [ -f ".env" ]; then
+        success ".env file exists"
+    else
+        warn ".env file missing - run bootstrap first"
+        status=1
+    fi
+
+    # Data directory
+    source .env 2>/dev/null || true
+    local data_root="${DATA_ROOT:-/srv/orion/dataaicore}"
+    info "Checking data directory ($data_root)..."
+    if [ -d "$data_root" ]; then
+        success "Data directory exists"
+        if [ -w "$data_root" ]; then
+            success "Data directory is writable"
+        else
+            warn "Data directory is not writable"
+            status=1
+        fi
+    else
+        warn "Data directory does not exist"
+        status=1
+    fi
+
+    # Disk space
+    info "Checking disk space..."
+    local free_space=$(df -BG "$data_root" 2>/dev/null | tail -1 | awk '{print $4}' | tr -d 'G')
+    if [ -n "$free_space" ] && [ "$free_space" -gt 10 ]; then
+        success "Disk space: ${free_space}GB free"
+    else
+        warn "Low disk space: ${free_space:-unknown}GB free"
+    fi
+
+    # Docker network
+    info "Checking Docker network..."
+    if docker network inspect dataaicore_internal &>/dev/null; then
+        success "Docker network exists"
+    else
+        warn "Docker network 'dataaicore_internal' does not exist"
+        status=1
+    fi
+
+    # Running containers
+    info "Checking running containers..."
+    local containers=$(docker compose --profile nextcloud --profile websearch --profile llm ps -q 2>/dev/null | wc -l)
+    if [ "$containers" -gt 0 ]; then
+        success "$containers container(s) running"
+        docker compose --profile nextcloud --profile websearch --profile llm ps --format "table {{.Name}}\t{{.Status}}" 2>/dev/null
+    else
+        info "No containers running"
+    fi
+
+    # Ports
+    info "Checking port availability..."
+    local host="${HOST_IP:-0.0.0.0}"
+    for port in 8080 8888 3000; do
+        if ss -lntp 2>/dev/null | grep -q ":$port "; then
+            success "Port $port is in use (expected if service is running)"
+        else
+            info "Port $port is available"
+        fi
+    done
+
+    echo ""
+    if [ $status -eq 0 ]; then
+        success "All checks passed!"
+    else
+        warn "Some checks failed - see above for details"
+    fi
+    echo ""
+
+    return $status
+}
+
+cmd_update() {
+    check_env
+
+    info "Pulling latest Docker images..."
+    docker compose --profile nextcloud --profile websearch --profile llm --profile public-nextcloud pull
+
+    success "Images updated"
+    echo ""
+    warn "Restart services to use new images:"
+    echo "  $0 down"
+    echo "  $0 up core"
+    echo ""
+}
+
+# ============================================================================
+# Main
+# ============================================================================
+
+CMD="${1:-help}"
+shift || true
+
+case "$CMD" in
+    up)
+        cmd_up "$@"
+        ;;
+    down)
+        cmd_down "$@"
+        ;;
+    ps)
+        cmd_ps
+        ;;
+    logs)
+        cmd_logs "$@"
+        ;;
+    doctor)
+        cmd_doctor
+        ;;
+    update)
+        cmd_update
+        ;;
+    help|--help|-h)
+        usage
+        ;;
+    *)
+        error "Unknown command: $CMD"
+        echo ""
+        usage
+        ;;
+esac

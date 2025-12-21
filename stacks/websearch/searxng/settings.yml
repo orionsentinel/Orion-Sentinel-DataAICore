@@ -1,0 +1,160 @@
+# SearXNG Settings for Orion-Sentinel-DataAICore
+#
+# This file configures SearXNG for local/private use.
+# Edit with: sudo nano stacks/websearch/searxng/settings.yml
+#
+# After editing, restart SearXNG:
+#   ./scripts/orionctl down websearch
+#   ./scripts/orionctl up websearch
+#
+# Documentation: https://docs.searxng.org/
+
+use_default_settings: true
+
+general:
+  instance_name: "Orion Search"
+  privacypolicy_url: false
+  donation_url: false
+  contact_url: false
+  enable_metrics: false
+  debug: false
+
+search:
+  safe_search: 0
+  autocomplete: "duckduckgo"
+  default_lang: "en"
+  ban_time_on_fail: 5
+  max_ban_time_on_fail: 120
+  formats:
+    - html
+    - json
+
+server:
+  # Secret key - set via SEARXNG_SECRET environment variable in compose.yaml
+  # This placeholder is used if env var is not set
+  secret_key: "change-me-in-env-file"
+  # Rate limiter disabled in Phase 1 (no Redis)
+  limiter: false
+  image_proxy: true
+  method: "GET"
+  # Bind to all interfaces inside container
+  bind_address: "0.0.0.0"
+  port: 8080
+
+ui:
+  static_use_hash: true
+  default_theme: simple
+  theme_args:
+    simple_style: dark
+  query_in_title: true
+  infinite_scroll: false
+  results_on_new_tab: false
+
+# Engine configuration
+# Enable stable, reliable engines
+# Disable engines that frequently fail or require special setup
+engines:
+  # General search engines
+  - name: duckduckgo
+    engine: duckduckgo
+    shortcut: ddg
+    disabled: false
+
+  - name: brave
+    engine: brave
+    shortcut: br
+    disabled: false
+
+  - name: qwant
+    engine: qwant
+    shortcut: qw
+    disabled: false
+
+  - name: startpage
+    engine: startpage
+    shortcut: sp
+    disabled: false
+
+  # Wikipedia
+  - name: wikipedia
+    engine: wikipedia
+    shortcut: wp
+    disabled: false
+
+  # Programming/tech
+  - name: github
+    engine: github
+    shortcut: gh
+    disabled: false
+
+  - name: stackoverflow
+    engine: stackoverflow
+    shortcut: so
+    disabled: false
+
+  - name: arch linux wiki
+    engine: archlinux
+    shortcut: al
+    disabled: false
+
+  # Images
+  - name: duckduckgo images
+    engine: duckduckgo_images
+    shortcut: ddi
+    disabled: false
+
+  - name: qwant images
+    engine: qwant
+    shortcut: qwi
+    qwant_categ: images
+    disabled: false
+
+  # Videos
+  - name: youtube
+    engine: youtube_noapi
+    shortcut: yt
+    disabled: false
+
+  # Maps
+  - name: openstreetmap
+    engine: openstreetmap
+    shortcut: osm
+    disabled: false
+
+  # Science/academic
+  - name: arxiv
+    engine: arxiv
+    shortcut: arx
+    disabled: false
+
+  - name: semantic scholar
+    engine: semantic_scholar
+    shortcut: se
+    disabled: false
+
+  # Disabled engines (unreliable or require API keys)
+  - name: google
+    engine: google
+    shortcut: g
+    disabled: true  # Often blocks SearXNG
+
+  - name: bing
+    engine: bing
+    shortcut: bi
+    disabled: true  # Requires special handling
+
+# Output plugins
+enabled_plugins:
+  - 'Hash plugin'
+  - 'Self Information'
+  - 'Tracker URL remover'
+  - 'Ahmia blacklist'
+
+# Outgoing settings
+outgoing:
+  request_timeout: 6.0
+  max_request_timeout: 15.0
+  useragent_suffix: ""
+  pool_connections: 100
+  pool_maxsize: 20
+  enable_http2: true

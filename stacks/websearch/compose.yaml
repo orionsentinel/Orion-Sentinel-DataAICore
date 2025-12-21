@@ -1,0 +1,69 @@
+# Orion-Sentinel-DataAICore - Web Search Stack
+# SearXNG privacy-focused meta-search engine
+#
+# Profile: websearch
+#
+# IMPORTANT: Phase 1 deployment - NO local document indexing
+# This means: NO Meilisearch, NO Tika, NO Valkey/Redis for rate limiting
+#
+# Usage:
+#   ./scripts/orionctl up websearch
+#
+# To edit this file:
+#   sudo nano stacks/websearch/compose.yaml
+#
+# Access:
+#   http://${HOST_IP}:8888
+#
+# WARNING: DO NOT expose SearXNG to the internet!
+# It is designed for personal/private use only.
+
+services:
+  # ============================================================================
+  # SEARXNG
+  # Privacy-focused meta-search engine
+  # ============================================================================
+
+  searxng:
+    image: searxng/searxng:latest
+    container_name: orion_dataaicore_searxng
+    restart: unless-stopped
+    profiles:
+      - websearch
+    environment:
+      TZ: ${TZ:-Europe/Amsterdam}
+      SEARXNG_BASE_URL: http://${HOST_IP:-localhost}:${SEARXNG_PORT:-8888}/
+      SEARXNG_SECRET: ${SEARXNG_SECRET_KEY}
+      # Disable rate limiter (no Redis in Phase 1)
+      SEARXNG_LIMITER: "false"
+    volumes:
+      - ${DATA_ROOT:-/srv/orion/dataaicore}/searxng:/etc/searxng
+      - ./searxng/settings.yml:/etc/searxng/settings.yml:ro
+    ports:
+      - "${HOST_IP:-0.0.0.0}:${SEARXNG_PORT:-8888}:8080"
+    networks:
+      - dataaicore_internal
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
+    cap_add:
+      - CHOWN
+      - SETGID
+      - SETUID
+    healthcheck:
+      test: ["CMD", "wget", "-q", "--spider", "http://localhost:8080/healthz"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 30s
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
+
+networks:
+  dataaicore_internal:
+    name: dataaicore_internal
+    external: true
