@@ -28,19 +28,7 @@ All services are configured for **LAN-only access** by default:
 
 ```bash
 # Check which ports are listening
-ss -lntp
-
-# Expected output (only bound to your LAN IP or 0.0.0.0):
-# LISTEN 0.0.0.0:8080   # Nextcloud
-# LISTEN 0.0.0.0:8888   # SearXNG
-# LISTEN 0.0.0.0:3000   # Open WebUI
-```
-
-### Verify Local-Only Status
-
-```bash
-# Check which ports are listening
-ss -lntp
+ss -lntp | grep -E ":(8080|8888|3000|80|443)"
 
 # Check Docker container port mappings
 docker ps --format 'table {{.Names}}\t{{.Ports}}'
@@ -50,8 +38,9 @@ docker ps --format 'table {{.Names}}\t{{.Ports}}'
 - Nextcloud: `127.0.0.1:8080->80/tcp` or `<LAN_IP>:8080->80/tcp`
 - SearXNG: `127.0.0.1:8888->8080/tcp` or `<LAN_IP>:8888->8080/tcp`
 - Open WebUI: `127.0.0.1:3000->8080/tcp` or `<LAN_IP>:3000->8080/tcp`
+- PostgreSQL, Redis, Ollama: No published ports (internal only)
 
-**WARNING:** If you see `0.0.0.0:PORT` bindings, your services are exposed to all network interfaces, which is less secure. Update `HOST_IP` in `.env` to your specific LAN IP or `127.0.0.1`.
+**WARNING:** If you see `0.0.0.0:PORT` bindings for services other than Caddy, your services may be exposed to all network interfaces. Update `HOST_IP` in `.env` to your specific LAN IP or `127.0.0.1`.
 
 ### Firewall Configuration
 
@@ -147,16 +136,24 @@ sudo nano .env
 
 **Default protections:**
 - **Not exposed to network** (internal only, no published ports)
-- Accessed only by Open WebUI via Docker network
+- **Internal Docker network only** - accessible only by Open WebUI
 - No external API access by default
+- Hardcoded to bind to 0.0.0.0 inside container (but not published)
 
-**Note:** Ollama has no built-in authentication. It should **never** be exposed to the internet or LAN without additional security layers.
+**Note:** Ollama has no built-in authentication. It is configured to be accessible **ONLY** within the Docker internal network. Never expose Ollama to the LAN or internet without additional security layers.
 
-To expose Ollama API to LAN (not recommended):
+**Network Configuration:**
+- Connected to: `dataaicore_internal` only
+- NOT connected to: `dataaicore_lan`
+- No published ports (API accessible only by other containers)
+
+If you need to expose Ollama API to LAN (NOT recommended):
 ```yaml
 # Uncomment in stacks/llm/compose.yaml
 ports:
   - "${HOST_IP:-127.0.0.1}:11434:11434"
+# Then also add to networks:
+#   - lan
 ```
 
 ---
@@ -333,11 +330,54 @@ cap_add:
 
 ### Docker Network Isolation
 
-All services communicate via the `dataaicore_internal` Docker network:
+DataAICore uses a dual-network architecture for enhanced security:
 
-- Containers can communicate by name
-- External access only via published ports
-- Internal services (Postgres, Redis, Ollama) not published
+**Network Topology:**
+- `dataaicore_internal` - Internal network for service-to-service communication
+  - All services connect to this network
+  - Enables containers to communicate by service name
+  - No external access without published ports
+  
+- `dataaicore_lan` - LAN-accessible network  
+  - Only UI services (nextcloud, searxng, openwebui, caddy) connect to this
+  - Services with published ports use this network for external access
+  - Internal services (postgres, redis, ollama) are NOT on this network
+
+**Service Network Configuration:**
+
+| Service | Internal Network | LAN Network | Published Ports |
+|---------|-----------------|-------------|-----------------|
+| PostgreSQL | ✅ | ❌ | None (internal only) |
+| Redis | ✅ | ❌ | None (internal only) |
+| Ollama | ✅ | ❌ | None (internal only) |
+| Nextcloud | ✅ | ✅ | `${HOST_IP}:8080` |
+| Nextcloud Cron | ✅ | ❌ | None |
+| SearXNG | ✅ | ✅ | `${HOST_IP}:8888` |
+| Open WebUI | ✅ | ✅ | `${HOST_IP}:3000` |
+| Caddy | ✅ | ✅ | `0.0.0.0:80,443` |
+
+### Verify Network Isolation
+
+Check that services are properly isolated:
+
+```bash
+# List Docker networks
+docker network ls | grep dataaicore
+
+# Inspect internal network (should show all services)
+docker network inspect dataaicore_internal
+
+# Inspect LAN network (should show only UI services)
+docker network inspect dataaicore_lan
+
+# Check which containers are on each network
+docker network inspect dataaicore_internal --format '{{range .Containers}}{{.Name}} {{end}}'
+docker network inspect dataaicore_lan --format '{{range .Containers}}{{.Name}} {{end}}'
+```
+
+**Expected output:**
+- Internal network: postgres, redis, nextcloud, nextcloud-cron, searxng, ollama, openwebui, caddy
+- LAN network: nextcloud, searxng, openwebui, caddy only
 
 ### Restrict External Access
 

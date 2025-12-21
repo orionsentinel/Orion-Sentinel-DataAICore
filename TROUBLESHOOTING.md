@@ -178,13 +178,14 @@ This checks:
 
 ### Docker Network Not Found
 
-**Symptoms:** Error about `dataaicore_internal` network
+**Symptoms:** Error about `dataaicore_internal` or `dataaicore_lan` network
 
 **Solutions:**
 
 ```bash
-# Create the network manually
+# Create networks manually
 docker network create dataaicore_internal
+docker network create dataaicore_lan
 
 # Or run bootstrap again
 ./scripts/bootstrap-dataaicore.sh
@@ -196,19 +197,28 @@ docker network create dataaicore_internal
 
 **Solutions:**
 
-1. **Check network exists:**
+1. **Check networks exist:**
    ```bash
    docker network ls | grep dataaicore
+   # Should show both dataaicore_internal and dataaicore_lan
    ```
 
-2. **Check containers are on same network:**
+2. **Check containers are on correct networks:**
    ```bash
-   docker network inspect dataaicore_internal
+   # Internal network should have all services
+   docker network inspect dataaicore_internal --format '{{range .Containers}}{{.Name}} {{end}}'
+   
+   # LAN network should have only UI services
+   docker network inspect dataaicore_lan --format '{{range .Containers}}{{.Name}} {{end}}'
    ```
 
-3. **Test connectivity:**
+3. **Verify internal connectivity:**
    ```bash
-   docker exec orion_dataaicore_openwebui ping ollama
+   # Test Nextcloud -> PostgreSQL
+   docker exec orion_dataaicore_nextcloud ping postgres
+   
+   # Test Open WebUI -> Ollama
+   docker exec orion_dataaicore_openwebui curl http://ollama:11434/api/tags
    ```
 
 4. **Restart all services:**
