@@ -98,12 +98,18 @@ All data is stored under `${DATA_ROOT}` (default: `/srv/orion/dataaicore`):
 ./scripts/orionctl down              # Stop all
 ./scripts/orionctl down nextcloud    # Stop specific stack
 
+# Restart services
+./scripts/orionctl restart core      # Restart all
+./scripts/orionctl restart llm       # Restart specific stack
+
 # View status and logs
 ./scripts/orionctl ps                # Show running containers
 ./scripts/orionctl logs nextcloud    # View logs
 ./scripts/orionctl doctor            # Health check
 
-# Update images
+# Maintenance
+./scripts/orionctl validate          # Validate compose files
+./scripts/orionctl backup            # Backup critical data
 ./scripts/orionctl update            # Pull and restart
 ```
 
@@ -140,9 +146,23 @@ After starting the LLM stack, pull a model:
 
 ## Security
 
-- All services run on **LAN ONLY** by default
+- All services run on **LOCAL ONLY** by default (bound to `127.0.0.1` or specific LAN IP)
 - No public exposure except when `public-nextcloud` profile is explicitly enabled
+- Strong secrets auto-generated during bootstrap
+- Resource limits and healthchecks on all containers
 - See [SECURITY.md](SECURITY.md) for detailed security guidelines
+
+## Production Features
+
+This repository includes production-ready features:
+- ✅ **Compose reliability:** `init: true`, `stop_grace_period`, resource hints
+- ✅ **Health checks:** All services monitored with healthchecks
+- ✅ **Logging limits:** 10MB/3 files per container
+- ✅ **Network isolation:** Services use isolated Docker network
+- ✅ **Secure defaults:** `HOST_IP=127.0.0.1` for localhost-only binding
+- ✅ **Automated backups:** `scripts/backup.sh` with restore capability
+- ✅ **Operator tools:** Enhanced `orionctl` with validate, backup, restart
+- ✅ **CI validation:** GitHub Actions for compose validation and shellcheck
 
 ## Documentation
 

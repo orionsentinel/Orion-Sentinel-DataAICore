@@ -147,7 +147,9 @@ sudo nano .env
 
 ```bash
 # Your OptiPlex's LAN IP address
-HOST_IP=192.168.1.100
+# Use 127.0.0.1 for localhost-only (most secure - requires SSH/VPN to access)
+# Or use your LAN IP for network access (e.g., 192.168.1.100)
+HOST_IP=127.0.0.1
 
 # Timezone
 TZ=Europe/Amsterdam
@@ -163,7 +165,12 @@ NEXTCLOUD_ADMIN_PASSWORD=<generated-secure-password>
 ORION_DOMAIN=yourdomain.com
 ```
 
-**Important:** Set `HOST_IP` to your OptiPlex's actual LAN IP address.
+**Important:** 
+- **HOST_IP:** By default set to `127.0.0.1` (localhost-only for maximum security)
+- Change to your LAN IP (e.g., `192.168.1.100`) if you want to access services from other devices on your network
+- If set to `127.0.0.1`, you'll need to SSH into your OptiPlex to access the services or set up an SSH tunnel
+
+**For LAN access:** Change `HOST_IP` to your OptiPlex's static IP address
 
 ## Step 4: Start Services
 
@@ -211,8 +218,27 @@ This verifies:
 - All containers are healthy
 - Ports are accessible
 - Disk space is adequate
+- Memory availability
+- No port conflicts
 
-## Step 5: Access Services
+### 4.4 Verify Port Exposure
+
+Check that services are properly bound:
+
+```bash
+# Check port bindings
+ss -lntp | grep -E ":(8080|8888|3000)"
+
+# Check Docker container ports
+docker ps --format 'table {{.Names}}\t{{.Ports}}'
+```
+
+**Expected:**
+- If `HOST_IP=127.0.0.1`: Ports bound to `127.0.0.1:PORT`
+- If `HOST_IP=192.168.1.100`: Ports bound to `192.168.1.100:PORT`
+- Should NOT see `0.0.0.0:PORT` (less secure)
+
+---
 
 ### 5.1 Nextcloud
 
@@ -301,11 +327,14 @@ Run the complete verification:
 # 2. Run health checks
 ./scripts/orionctl doctor
 
-# 3. Check disk space
+# 3. Validate compose files
+./scripts/orionctl validate
+
+# 4. Check disk space
 df -h /srv/orion/dataaicore
 
-# 4. View logs for any errors
-./scripts/orionctl logs
+# 5. View logs for any errors
+./scripts/orionctl logs | grep -i error
 ```
 
 ## Post-Installation Tasks
@@ -331,10 +360,20 @@ sudo systemctl start dataaicore
 
 See [OPERATIONS.md](OPERATIONS.md) for backup procedures.
 
-Minimum backup:
-- Nextcloud database: `${DATA_ROOT}/nextcloud/postgres`
-- Nextcloud files: `${DATA_ROOT}/nextcloud/app` and `data`
-- Configuration: `.env` file
+**Quick automated backup:**
+```bash
+# Run backup (saves to ~/backups/dataaicore)
+./scripts/orionctl backup
+
+# Schedule daily backups at 2 AM
+crontab -e
+# Add: 0 2 * * * /home/youruser/Orion-Sentinel-DataAICore/scripts/backup.sh
+```
+
+**Minimum backup:**
+- Nextcloud database: Auto-backed up by `scripts/backup.sh`
+- Nextcloud files: Manual (can be large)
+- Configuration: `.env` file (included in backup)
 
 ### Update Services
 

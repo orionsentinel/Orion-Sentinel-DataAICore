@@ -239,7 +239,65 @@ docker network create dataaicore_internal
 3. **Or change the port in .env:**
    ```bash
    sudo nano .env
-   # Change the port number
+   # For SearXNG: Change SEARXNG_PORT=8888 to different port
+   # For Nextcloud/Open WebUI: Edit compose file
+   
+   # Restart services
+   ./scripts/orionctl restart core
+   ```
+
+### Can't Access Services from Another Computer
+
+**Symptoms:** Services work on OptiPlex but not from other devices on network
+
+**Cause:** `HOST_IP=127.0.0.1` (localhost-only)
+
+**Solutions:**
+
+1. **Check current HOST_IP:**
+   ```bash
+   grep HOST_IP .env
+   ```
+
+2. **Change to LAN IP:**
+   ```bash
+   sudo nano .env
+   # Change: HOST_IP=192.168.1.100  # your OptiPlex IP
+   ```
+
+3. **Restart services:**
+   ```bash
+   ./scripts/orionctl restart core
+   ```
+
+4. **Verify binding:**
+   ```bash
+   docker ps --format 'table {{.Names}}\t{{.Ports}}'
+   # Should show: 192.168.1.100:8080->80/tcp
+   ```
+
+### Services Exposed on Wrong Network Interface
+
+**Symptoms:** Services accessible on unexpected networks
+
+**Solutions:**
+
+1. **Check current bindings:**
+   ```bash
+   ss -lntp | grep -E ":(8080|8888|3000)"
+   docker ps --format 'table {{.Names}}\t{{.Ports}}'
+   ```
+
+2. **Update HOST_IP:**
+   ```bash
+   sudo nano .env
+   # Set to specific IP: HOST_IP=192.168.1.100
+   # Or localhost only: HOST_IP=127.0.0.1
+   ```
+
+3. **Restart:**
+   ```bash
+   ./scripts/orionctl restart core
    ```
 
 ---

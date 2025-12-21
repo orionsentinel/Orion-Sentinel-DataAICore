@@ -81,13 +81,21 @@ Checks:
 ### Update Docker Images
 
 ```bash
-# Pull latest images and restart
+# Pull latest images (does not restart)
 ./scripts/orionctl update
 
-# Or manually:
-./scripts/orionctl down
+# Or pull and restart in one go:
+./scripts/orionctl restart core
+```
+
+### Manual Update Process
+
+```bash
+# 1. Pull latest images
 docker compose pull
-./scripts/orionctl up core
+
+# 2. Restart services
+./scripts/orionctl restart core
 ```
 
 ### Update LLM Models
@@ -106,6 +114,24 @@ docker exec orion_dataaicore_ollama ollama rm old-model:tag
 ---
 
 ## Backups
+
+### Quick Backup
+
+Use the automated backup script:
+
+```bash
+# Backup to default location (~/backups/dataaicore)
+./scripts/orionctl backup
+
+# Or specify a custom destination
+./scripts/backup.sh /path/to/backup/directory
+```
+
+**What gets backed up:**
+- ✅ Nextcloud database (PostgreSQL dump)
+- ✅ Configuration files (.env, searxng settings)
+- ✅ Open WebUI data
+- ⚠️ Nextcloud app/data (manual - can be very large)
 
 ### What to Backup
 
@@ -162,7 +188,26 @@ tar -czf ~/backups/config-$(date +%Y%m%d).tar.gz \
 
 ### Automated Backup Script
 
-Create a backup script:
+The `scripts/backup.sh` script provides automated backups:
+
+```bash
+# Run backup
+./scripts/backup.sh
+
+# Backup to custom location
+./scripts/backup.sh /mnt/external/backups
+```
+
+**Features:**
+- Backs up Nextcloud database
+- Backs up configuration files
+- Backs up Open WebUI data
+- Automatically cleans up backups older than 7 days
+- Creates timestamped backup archives
+
+### Schedule Automated Backups
+
+Create a cron job for daily backups:
 
 ```bash
 cat > ~/backup-dataaicore.sh << 'EOF'
@@ -194,18 +239,17 @@ EOF
 chmod +x ~/backup-dataaicore.sh
 ```
 
-Schedule with cron:
-
 ```bash
 crontab -e
-# Add: 0 2 * * * ~/backup-dataaicore.sh >> ~/backup.log 2>&1
+# Add this line for daily 2 AM backups:
+0 2 * * * /home/youruser/Orion-Sentinel-DataAICore/scripts/backup.sh >> /home/youruser/backup.log 2>&1
 ```
 
----
+### Manual Backup Procedures
 
-## Restore
+If you need to manually backup specific components:
 
-### Restore Nextcloud Database
+#### Backup Nextcloud Database
 
 ```bash
 # Stop Nextcloud
@@ -467,11 +511,36 @@ gunzip -c ~/backups/nextcloud-db-LATEST.sql.gz | \
 
 ### Full System Recovery
 
+Use the restore script for disaster recovery:
+
 ```bash
-# 1. Fresh install (follow INSTALL.md)
-# 2. Restore .env from backup
-# 3. Restore database
-# 4. Restore Nextcloud files
+# 1. Fresh install (follow INSTALL.md if needed)
+# 2. Run restore script
+./scripts/restore.sh /path/to/backup/prefix
+
+# 3. Manually restore Nextcloud files if needed
+sudo tar -xzf /path/to/backup_nextcloud_app.tar.gz -C /
+sudo tar -xzf /path/to/backup_nextcloud_data.tar.gz -C /
+
+# 4. Fix permissions
+sudo chown -R www-data:www-data /srv/orion/dataaicore/nextcloud/app
+sudo chown -R www-data:www-data /srv/orion/dataaicore/nextcloud/data
+
 # 5. Start services
 ./scripts/orionctl up core
 ```
+
+### Test Your Backups
+
+**Regularly test backup restoration** (at least quarterly):
+
+```bash
+# 1. Take a test backup
+./scripts/backup.sh /tmp/test-backup
+
+# 2. In a test environment, restore from backup
+# 3. Verify all services work correctly
+# 4. Clean up test backup
+```
+
+---

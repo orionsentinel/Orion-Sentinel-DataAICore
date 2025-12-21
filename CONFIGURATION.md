@@ -32,16 +32,32 @@ Sets the timezone for all containers. Use a valid [tz database timezone](https:/
 ### HOST_IP - Network Binding
 
 ```bash
-HOST_IP=192.168.1.100
+HOST_IP=127.0.0.1
 ```
 
 The IP address to bind published ports to.
 
 **Options:**
-- `192.168.x.x` - Specific LAN IP (recommended)
-- `0.0.0.0` - All interfaces (less secure)
+- `127.0.0.1` - Localhost only (most secure, default) - services only accessible from the host itself
+- `192.168.x.x` - Specific LAN IP (recommended for LAN access) - services accessible from your local network
+- `0.0.0.0` - All interfaces (least secure, not recommended) - services may be accessible from all networks
 
-**Why this matters:** Setting a specific IP prevents services from being accidentally exposed on other network interfaces.
+**Why this matters:** 
+- Setting `127.0.0.1` (default) means services are only accessible from the machine itself - you'll need to SSH in or use a remote desktop to access them
+- Setting a specific LAN IP (e.g., `192.168.1.100`) allows access from your local network but not the internet
+- Setting `0.0.0.0` binds to all network interfaces, which could accidentally expose services on unintended networks
+
+**Recommendation:**
+- For initial setup: Keep `127.0.0.1` and access via SSH tunnel
+- For LAN access: Change to your server's LAN IP (e.g., `192.168.1.100`)
+- Never use `0.0.0.0` unless you understand the security implications
+
+To change:
+```bash
+sudo nano .env
+# Change HOST_IP=127.0.0.1 to your LAN IP
+# Then restart: ./scripts/orionctl restart core
+```
 
 ### DATA_ROOT - Data Storage Location
 
