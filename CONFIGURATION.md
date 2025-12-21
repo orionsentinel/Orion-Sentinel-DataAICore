@@ -225,13 +225,29 @@ ENABLE_SIGNUP=true
 
 **Recommendation:** Set `ENABLE_SIGNUP=false` after creating your admin account.
 
-### Ollama Settings
+### Ollama Configuration
 
-```bash
-OLLAMA_HOST=0.0.0.0
-```
+Ollama runs on an internal-only network and is not exposed to the host by default. It only accepts connections from other containers on the `dataaicore_internal` network.
 
-Network binding for Ollama. By default, Ollama is internal-only (not published to host).
+**Network Configuration:**
+- Connected to: `dataaicore_internal` only
+- NOT connected to: `dataaicore_lan`
+- No published ports (API only accessible by Open WebUI)
+
+To expose Ollama API to LAN (NOT recommended):
+1. Edit `stacks/llm/compose.yaml`
+2. Uncomment the ports section:
+   ```yaml
+   ports:
+     - "${HOST_IP:-127.0.0.1}:11434:11434"
+   ```
+3. Add to networks:
+   ```yaml
+   networks:
+     - internal
+     - lan
+   ```
+4. Restart: `./scripts/orionctl restart llm`
 
 ### Open WebUI to SearXNG Integration
 
@@ -335,6 +351,57 @@ cloud.{$ORION_DOMAIN} {
 
 ---
 
+## Network Architecture
+
+DataAICore uses a dual-network architecture for enhanced security and isolation:
+
+### Networks
+
+**dataaicore_internal** - Internal service communication
+- Purpose: Service-to-service communication
+- Connected services: All services
+- Isolation: No direct external access without published ports
+
+**dataaicore_lan** - LAN-accessible services
+- Purpose: Services that need LAN access
+- Connected services: nextcloud, searxng, openwebui, caddy
+- Isolation: Internal services (postgres, redis, ollama) are NOT on this network
+
+### Service Network Matrix
+
+| Service | Internal Network | LAN Network | Published Ports | Accessible From |
+|---------|-----------------|-------------|-----------------|-----------------|
+| PostgreSQL | ✅ | ❌ | None | Containers only |
+| Redis | ✅ | ❌ | None | Containers only |
+| Ollama | ✅ | ❌ | None | Containers only |
+| Nextcloud | ✅ | ✅ | `${HOST_IP}:8080` | LAN |
+| Nextcloud Cron | ✅ | ❌ | None | Containers only |
+| SearXNG | ✅ | ✅ | `${HOST_IP}:8888` | LAN |
+| Open WebUI | ✅ | ✅ | `${HOST_IP}:3000` | LAN |
+| Caddy | ✅ | ✅ | `0.0.0.0:80,443` | Internet (Phase 2) |
+
+### Verify Network Configuration
+
+```bash
+# List networks
+docker network ls | grep dataaicore
+
+# Check which containers are on each network
+docker network inspect dataaicore_internal --format '{{range .Containers}}{{.Name}} {{end}}'
+docker network inspect dataaicore_lan --format '{{range .Containers}}{{.Name}} {{end}}'
+
+# Verify port bindings
+docker ps --format 'table {{.Names}}\t{{.Ports}}'
+```
+
+**Expected internal network members:** All services
+
+**Expected LAN network members:** nextcloud, searxng, openwebui, caddy only
+
+**Security benefit:** Even if `HOST_IP` is misconfigured, PostgreSQL, Redis, and Ollama remain inaccessible from the network because they're not connected to the LAN network and have no published ports.
+
+---
+
 ## Port Reference
 
 | Service | Default Port | Environment Variable |
@@ -354,14 +421,15 @@ cloud.{$ORION_DOMAIN} {
 
 ### Custom Docker Network
 
-The default network is `dataaicore_internal`. To use a custom network:
+DataAICore uses two networks by default:
+- `dataaicore_internal` - Internal service communication (all services)
+- `dataaicore_lan` - LAN-accessible services (UI services only)
+
+These networks are automatically created by the bootstrap script. To recreate them manually:
 
 ```bash
-# Create network
-docker network create my_custom_network
-
-# Edit compose files to use it
-sudo nano compose.yaml
+docker network create dataaicore_internal
+docker network create dataaicore_lan
 ```
 
 ### GPU Support for Ollama

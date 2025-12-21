@@ -34,6 +34,7 @@ services:
     container_name: orion_dataaicore_caddy
     restart: unless-stopped
     init: true
+    stop_grace_period: 30s
     profiles:
       - public-nextcloud
     environment:
@@ -49,7 +50,8 @@ services:
       - ${DATA_ROOT:-/srv/orion/dataaicore}/caddy/data:/data
       - ${DATA_ROOT:-/srv/orion/dataaicore}/caddy/config:/config
     networks:
-      - dataaicore_internal
+      - internal
+      - lan
     security_opt:
       - no-new-privileges:true
     healthcheck:
@@ -69,6 +71,13 @@ services:
           memory: "128M"
 
 networks:
-  dataaicore_internal:
+  # Internal network for service-to-service communication only
+  internal:
     name: dataaicore_internal
-    external: true
+    driver: bridge
+    internal: false
+  
+  # LAN network for services that need to be accessible from the network
+  lan:
+    name: dataaicore_lan
+    driver: bridge

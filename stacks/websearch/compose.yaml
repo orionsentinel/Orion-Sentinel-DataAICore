@@ -43,7 +43,8 @@ services:
     ports:
       - "${HOST_IP:-127.0.0.1}:${SEARXNG_PORT:-8888}:8080"
     networks:
-      - dataaicore_internal
+      - internal
+      - lan
     security_opt:
       - no-new-privileges:true
     cap_drop:
@@ -69,6 +70,13 @@ services:
           memory: "256M"
 
 networks:
-  dataaicore_internal:
+  # Internal network for service-to-service communication only
+  internal:
     name: dataaicore_internal
-    external: true
+    driver: bridge
+    internal: false
+  
+  # LAN network for services that need to be accessible from the network
+  lan:
+    name: dataaicore_lan
+    driver: bridge

@@ -322,6 +322,89 @@ curl -s http://localhost:11434/api/tags | jq
 
 ---
 
+## Security Verification
+
+### Verify Port Exposure
+
+Check that services are properly bound to the correct network interfaces:
+
+```bash
+# Check listening ports
+ss -lntp | grep -E ":(8080|8888|3000|80|443)"
+
+# Check Docker container port mappings
+docker ps --format 'table {{.Names}}\t{{.Ports}}'
+```
+
+**Expected output:**
+
+| Service | Expected Port Binding | Notes |
+|---------|----------------------|-------|
+| Nextcloud | `127.0.0.1:8080->80/tcp` or `<LAN_IP>:8080->80/tcp` | Should bind to `HOST_IP` |
+| SearXNG | `127.0.0.1:8888->8080/tcp` or `<LAN_IP>:8888->8080/tcp` | Should bind to `HOST_IP` |
+| Open WebUI | `127.0.0.1:3000->8080/tcp` or `<LAN_IP>:3000->8080/tcp` | Should bind to `HOST_IP` |
+| PostgreSQL | No published ports | Internal only |
+| Redis | No published ports | Internal only |
+| Ollama | No published ports | Internal only |
+| Caddy (Phase 2) | `0.0.0.0:80->80/tcp`, `0.0.0.0:443->443/tcp` | Public access |
+
+**Warning signs:**
+- ❌ `0.0.0.0:8080` for Nextcloud/SearXNG/Open WebUI (too exposed)
+- ❌ Any published ports for postgres/redis/ollama (security issue)
+
+### Verify Network Isolation
+
+Check that services are on the correct Docker networks:
+
+```bash
+# List networks
+docker network ls | grep dataaicore
+
+# Check internal network members (should be all services)
+docker network inspect dataaicore_internal --format '{{range .Containers}}{{.Name}} {{end}}'
+
+# Check LAN network members (should be UI services only)
+docker network inspect dataaicore_lan --format '{{range .Containers}}{{.Name}} {{end}}'
+```
+
+**Expected:**
+- **Internal network:** postgres, redis, nextcloud, nextcloud-cron, searxng, ollama, openwebui, caddy (all services)
+- **LAN network:** nextcloud, searxng, openwebui, caddy (UI services only)
+
+**Verification:**
+```bash
+# Verify postgres is NOT on LAN network
+docker network inspect dataaicore_lan | grep postgres
+# Should return nothing
+
+# Verify ollama is NOT on LAN network  
+docker network inspect dataaicore_lan | grep ollama
+# Should return nothing
+
+# Verify nextcloud IS on both networks
+docker network inspect dataaicore_internal | grep nextcloud
+docker network inspect dataaicore_lan | grep nextcloud
+# Both should show nextcloud
+```
+
+### Verify Internal-Only Services
+
+Test that internal services are not accessible from the host:
+
+```bash
+# These should FAIL (connection refused):
+curl http://localhost:5432  # PostgreSQL - should not be accessible
+curl http://localhost:6379  # Redis - should not be accessible
+curl http://localhost:11434 # Ollama - should not be accessible
+
+# These should SUCCEED (if services are running):
+curl http://localhost:8080/status.php  # Nextcloud
+curl http://localhost:8888/healthz     # SearXNG
+curl http://localhost:3000/health      # Open WebUI
+```
+
+---
+
 ## Maintenance Tasks
 
 ### Clean Up Docker

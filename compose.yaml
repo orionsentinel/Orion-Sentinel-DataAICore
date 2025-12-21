@@ -22,6 +22,12 @@
 #   sudo nano stacks/nextcloud/compose.yaml
 #   sudo nano stacks/websearch/compose.yaml
 #   sudo nano stacks/llm/compose.yaml
+#
+# Network Architecture:
+#   - dataaicore_internal: Service-to-service communication (all services)
+#   - dataaicore_lan: LAN-accessible services (UI services only)
+#   - Internal-only services: postgres, redis, ollama (no published ports)
+#   - LAN-accessible services: nextcloud, searxng, openwebui (published ports)
 
 include:
   # Nextcloud + Postgres + Redis (profile: nextcloud)
@@ -41,5 +47,6 @@ include:
   - path: stacks/public-nextcloud/compose.yaml
     env_file: .env
 
-# The dataaicore_internal network is created by the first stack to start.
-# All services communicate via this internal Docker network.
+# Networks are defined in each stack compose file and are shared across stacks:
+# - dataaicore_internal: Internal network for all services
+# - dataaicore_lan: LAN-accessible network for UI services

@@ -33,7 +33,7 @@ services:
     volumes:
       - ${DATA_ROOT:-/srv/orion/dataaicore}/nextcloud/postgres:/var/lib/postgresql/data
     networks:
-      - dataaicore_internal
+      - internal
     security_opt:
       - no-new-privileges:true
     healthcheck:
@@ -71,7 +71,7 @@ services:
     volumes:
       - ${DATA_ROOT:-/srv/orion/dataaicore}/redis:/data
     networks:
-      - dataaicore_internal
+      - internal
     security_opt:
       - no-new-privileges:true
     healthcheck:
@@ -132,7 +132,8 @@ services:
     ports:
       - "${HOST_IP:-127.0.0.1}:8080:80"
     networks:
-      - dataaicore_internal
+      - internal
+      - lan
     security_opt:
       - no-new-privileges:true
     healthcheck:
@@ -172,7 +173,7 @@ services:
       - ${DATA_ROOT:-/srv/orion/dataaicore}/nextcloud/data:/var/www/html/data
     entrypoint: /cron.sh
     networks:
-      - dataaicore_internal
+      - internal
     security_opt:
       - no-new-privileges:true
     logging:
@@ -186,6 +187,13 @@ services:
           memory: "128M"
 
 networks:
-  dataaicore_internal:
+  # Internal network for service-to-service communication only
+  internal:
     name: dataaicore_internal
-    external: true
+    driver: bridge
+    internal: false
+  
+  # LAN network for services that need to be accessible from the network
+  lan:
+    name: dataaicore_lan
+    driver: bridge

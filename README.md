@@ -174,7 +174,11 @@ This repository includes production-ready features:
 
 ## Network Configuration
 
-By default, all services use the `dataaicore_internal` Docker network.
+DataAICore uses a dual-network architecture for security and isolation:
+
+**Networks:**
+- `dataaicore_internal` - All services (internal communication)
+- `dataaicore_lan` - UI services only (LAN access)
 
 **Published to LAN:**
 - Nextcloud: `${HOST_IP}:8080`
@@ -182,9 +186,11 @@ By default, all services use the `dataaicore_internal` Docker network.
 - Open WebUI: `${HOST_IP}:3000`
 
 **Internal only (NOT published):**
-- Postgres
-- Redis
-- Ollama API (accessed by Open WebUI internally)
+- PostgreSQL (accessed by Nextcloud via internal network)
+- Redis (accessed by Nextcloud via internal network)
+- Ollama API (accessed by Open WebUI via internal network)
+
+This architecture ensures database and AI inference services are never directly accessible from the network, even if `HOST_IP` is misconfigured.
 
 ## Timezone
 
