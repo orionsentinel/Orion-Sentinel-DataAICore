@@ -33,6 +33,7 @@ services:
     image: caddy:2-alpine
     container_name: orion_dataaicore_caddy
     restart: unless-stopped
+    init: true
     profiles:
       - public-nextcloud
     environment:
@@ -61,7 +62,11 @@ services:
       driver: json-file
       options:
         max-size: "10m"
-        max-file: "5"
+        max-file: "3"
+    deploy:
+      resources:
+        reservations:
+          memory: "128M"
 
 networks:
   dataaicore_internal:

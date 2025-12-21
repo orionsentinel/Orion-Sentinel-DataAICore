@@ -103,6 +103,16 @@ else
     STATUS=1
 fi
 
+# Memory info
+info "Memory..."
+if command -v free &>/dev/null; then
+    TOTAL_MEM=$(free -h | awk '/^Mem:/ {print $2}')
+    AVAIL_MEM=$(free -h | awk '/^Mem:/ {print $7}')
+    success "Total: $TOTAL_MEM, Available: $AVAIL_MEM"
+else
+    warn "free command not available"
+fi
+
 echo ""
 
 # ============================================================================
@@ -187,6 +197,20 @@ else
     info "Available (service not running)"
 fi
 
+# Check for port conflicts
+info "Checking for port conflicts..."
+CONFLICTS=0
+for port in 8080 8888 3000; do
+    COUNT=$(ss -lntp 2>/dev/null | grep -c ":$port " || true)
+    if [ "$COUNT" -gt 1 ]; then
+        warn "Port $port has multiple listeners!"
+        CONFLICTS=1
+    fi
+done
+if [ $CONFLICTS -eq 0 ]; then
+    success "No port conflicts detected"
+fi
+
 echo ""
 
 # ============================================================================
@@ -200,10 +224,11 @@ echo ""
 check_container() {
     local name="$1"
     local display="$2"
+    local health
     
     info "$display..."
     if docker ps --format '{{.Names}}' | grep -q "^${name}$"; then
-        local health=$(docker inspect --format='{{.State.Health.Status}}' "$name" 2>/dev/null || echo "none")
+        health=$(docker inspect --format='{{.State.Health.Status}}' "$name" 2>/dev/null || echo "none")
         case "$health" in
             healthy)
                 success "Running (healthy)"
@@ -304,5 +329,27 @@ else
 fi
 echo "╚════════════════════════════════════════════════════════════════╝"
 echo ""
+
+if [ $STATUS -ne 0 ]; then
+    echo -e "${YELLOW}Next steps:${NC}"
+    echo ""
+    
+    # Actionable recommendations
+    if [ ! -f ".env" ]; then
+        echo "  1. Run bootstrap to create .env:"
+        echo "     ./scripts/bootstrap-dataaicore.sh"
+        echo ""
+    fi
+    
+    if ! docker ps -q 2>/dev/null | grep -q .; then
+        echo "  2. Start services:"
+        echo "     ./scripts/orionctl up core"
+        echo ""
+    fi
+    
+    echo "  3. Check logs for errors:"
+    echo "     ./scripts/orionctl logs"
+    echo ""
+fi
 
 exit $STATUS

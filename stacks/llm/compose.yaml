@@ -25,6 +25,8 @@ services:
     image: ollama/ollama:latest
     container_name: orion_dataaicore_ollama
     restart: unless-stopped
+    init: true
+    stop_grace_period: 60s
     profiles:
       - llm
     environment:
@@ -35,7 +37,7 @@ services:
     # Internal only by default - Open WebUI connects via Docker network
     # Uncomment to expose Ollama API to LAN:
     # ports:
-    #   - "${HOST_IP:-0.0.0.0}:11434:11434"
+    #   - "${HOST_IP:-127.0.0.1}:11434:11434"
     expose:
       - "11434"
     networks:
@@ -66,6 +68,10 @@ services:
       options:
         max-size: "10m"
         max-file: "3"
+    deploy:
+      resources:
+        reservations:
+          memory: "2G"
 
   # ============================================================================
   # OPEN WEBUI
@@ -76,6 +82,7 @@ services:
     image: ghcr.io/open-webui/open-webui:main
     container_name: orion_dataaicore_openwebui
     restart: unless-stopped
+    init: true
     profiles:
       - llm
     depends_on:
@@ -102,7 +109,7 @@ services:
     volumes:
       - ${DATA_ROOT:-/srv/orion/dataaicore}/llm/openwebui:/app/backend/data
     ports:
-      - "${HOST_IP:-0.0.0.0}:3000:8080"
+      - "${HOST_IP:-127.0.0.1}:3000:8080"
     networks:
       - dataaicore_internal
     security_opt:
@@ -118,6 +125,10 @@ services:
       options:
         max-size: "10m"
         max-file: "3"
+    deploy:
+      resources:
+        reservations:
+          memory: "512M"
 
 networks:
   dataaicore_internal:

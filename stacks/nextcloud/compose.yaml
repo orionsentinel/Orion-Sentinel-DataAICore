@@ -21,6 +21,8 @@ services:
     image: postgres:16-alpine
     container_name: orion_dataaicore_postgres
     restart: unless-stopped
+    init: true
+    stop_grace_period: 30s
     profiles:
       - nextcloud
     environment:
@@ -45,6 +47,10 @@ services:
       options:
         max-size: "10m"
         max-file: "3"
+    deploy:
+      resources:
+        reservations:
+          memory: "256M"
 
   # ============================================================================
   # REDIS CACHE
@@ -55,6 +61,8 @@ services:
     image: redis:7-alpine
     container_name: orion_dataaicore_redis
     restart: unless-stopped
+    init: true
+    stop_grace_period: 10s
     profiles:
       - nextcloud
     environment:
@@ -75,8 +83,12 @@ services:
     logging:
       driver: json-file
       options:
-        max-size: "5m"
-        max-file: "2"
+        max-size: "10m"
+        max-file: "3"
+    deploy:
+      resources:
+        reservations:
+          memory: "128M"
 
   # ============================================================================
   # NEXTCLOUD
@@ -87,6 +99,8 @@ services:
     image: nextcloud:29-apache
     container_name: orion_dataaicore_nextcloud
     restart: unless-stopped
+    init: true
+    stop_grace_period: 30s
     profiles:
       - nextcloud
     depends_on:
@@ -116,7 +130,7 @@ services:
       - ${DATA_ROOT:-/srv/orion/dataaicore}/nextcloud/app:/var/www/html
       - ${DATA_ROOT:-/srv/orion/dataaicore}/nextcloud/data:/var/www/html/data
     ports:
-      - "${HOST_IP:-0.0.0.0}:8080:80"
+      - "${HOST_IP:-127.0.0.1}:8080:80"
     networks:
       - dataaicore_internal
     security_opt:
@@ -132,6 +146,10 @@ services:
       options:
         max-size: "10m"
         max-file: "3"
+    deploy:
+      resources:
+        reservations:
+          memory: "512M"
 
   # ============================================================================
   # NEXTCLOUD CRON
@@ -142,6 +160,7 @@ services:
     image: nextcloud:29-apache
     container_name: orion_dataaicore_nextcloud_cron
     restart: unless-stopped
+    init: true
     profiles:
       - nextcloud
     depends_on:
@@ -159,10 +178,14 @@ services:
     logging:
       driver: json-file
       options:
-        max-size: "5m"
-        max-file: "2"
+        max-size: "10m"
+        max-file: "3"
+    deploy:
+      resources:
+        reservations:
+          memory: "128M"
 
 networks:
   dataaicore_internal:
     name: dataaicore_internal
-    driver: bridge
+    external: true

@@ -1,0 +1,107 @@
+---
+name: Compose Validation
+
+'on':
+  push:
+    branches: [main, develop]
+  pull_request:
+    branches: [main, develop]
+
+jobs:
+  validate-compose:
+    name: Validate Docker Compose Files
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Create test .env file
+        run: cp env/.env.example .env
+
+      - name: Validate Nextcloud compose
+        run: docker compose --profile nextcloud config > /dev/null
+
+      - name: Validate WebSearch compose
+        run: docker compose --profile websearch config > /dev/null
+
+      - name: Validate LLM compose
+        run: docker compose --profile llm config > /dev/null
+
+      - name: Validate Public Nextcloud compose
+        run: docker compose --profile public-nextcloud config > /dev/null
+
+      - name: Validate all profiles together
+        run: |
+          docker compose --profile nextcloud --profile websearch \
+            --profile llm --profile public-nextcloud config > /dev/null
+
+  lint-yaml:
+    name: Lint YAML Files
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Install yamllint
+        run: pip install yamllint
+
+      - name: Lint compose files
+        run: |
+          yamllint -d '{extends: default, rules: {line-length: {max: 120}, \
+            comments: {min-spaces-from-content: 1}}}' \
+            compose.yaml \
+            stacks/*/compose.yaml \
+            stacks/*/searxng/*.yml || true
+
+      - name: Lint GitHub workflows
+        run: yamllint .github/workflows/*.yml
+
+  shellcheck:
+    name: ShellCheck Scripts
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Run ShellCheck
+        uses: ludeeus/action-shellcheck@master
+        with:
+          scandir: './scripts'
+          severity: warning
+        env:
+          SHELLCHECK_OPTS: -e SC1091
+
+  security-scan:
+    name: Security Scan
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Run Trivy vulnerability scanner
+        uses: aquasecurity/trivy-action@master
+        with:
+          scan-type: 'config'
+          scan-ref: '.'
+          format: 'sarif'
+          output: 'trivy-results.sarif'
+          severity: 'HIGH,CRITICAL'
+          exit-code: '0'
+
+      - name: Upload Trivy results
+        uses: github/codeql-action/upload-sarif@v3
+        if: always()
+        with:
+          sarif_file: 'trivy-results.sarif'

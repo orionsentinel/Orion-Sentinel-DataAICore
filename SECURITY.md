@@ -36,6 +36,23 @@ ss -lntp
 # LISTEN 0.0.0.0:3000   # Open WebUI
 ```
 
+### Verify Local-Only Status
+
+```bash
+# Check which ports are listening
+ss -lntp
+
+# Check Docker container port mappings
+docker ps --format 'table {{.Names}}\t{{.Ports}}'
+```
+
+**Expected output:**
+- Nextcloud: `127.0.0.1:8080->80/tcp` or `<LAN_IP>:8080->80/tcp`
+- SearXNG: `127.0.0.1:8888->8080/tcp` or `<LAN_IP>:8888->8080/tcp`
+- Open WebUI: `127.0.0.1:3000->8080/tcp` or `<LAN_IP>:3000->8080/tcp`
+
+**WARNING:** If you see `0.0.0.0:PORT` bindings, your services are exposed to all network interfaces, which is less secure. Update `HOST_IP` in `.env` to your specific LAN IP or `127.0.0.1`.
+
 ### Firewall Configuration
 
 Even though services are LAN-only by default, consider enabling a firewall:
@@ -70,6 +87,7 @@ sudo ufw status
 - Database password auto-generated
 - Redis password auto-generated
 - Trusted domains restrict access
+- Bound to HOST_IP (default: 127.0.0.1 or LAN IP)
 
 **Recommended actions:**
 1. Change admin password after first login
@@ -90,6 +108,7 @@ sudo ufw status
 - No user authentication (by design)
 - Limiter disabled (no rate limiting in Phase 1)
 - Private by design (no tracking)
+- Bound to HOST_IP (default: 127.0.0.1 or LAN IP)
 
 **Important:** 
 ⚠️ **DO NOT expose SearXNG to the internet!**
@@ -105,6 +124,7 @@ SearXNG is designed for personal/private use. Exposing it publicly will:
 - User authentication required
 - First user becomes admin
 - Sessions encrypted with secret key
+- Bound to HOST_IP (default: 127.0.0.1 or LAN IP)
 
 **Recommended actions:**
 1. Create admin account immediately after setup
@@ -126,10 +146,18 @@ sudo nano .env
 ### Ollama
 
 **Default protections:**
-- Not exposed to network (internal only)
+- **Not exposed to network** (internal only, no published ports)
 - Accessed only by Open WebUI via Docker network
+- No external API access by default
 
-**Note:** Ollama has no built-in authentication. It should **never** be exposed to the internet.
+**Note:** Ollama has no built-in authentication. It should **never** be exposed to the internet or LAN without additional security layers.
+
+To expose Ollama API to LAN (not recommended):
+```yaml
+# Uncomment in stacks/llm/compose.yaml
+ports:
+  - "${HOST_IP:-127.0.0.1}:11434:11434"
+```
 
 ---
 
