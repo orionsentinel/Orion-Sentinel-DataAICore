@@ -97,9 +97,12 @@ ${YELLOW}Usage:${NC}
 ${YELLOW}Commands:${NC}
   up [stacks...]      Start services with specified profiles
   down [stack]        Stop services (all or specific stack)
+  restart [stack]     Restart services (all or specific stack)
   ps                  Show running containers
   logs [service]      View logs (all services or specific)
+  validate            Validate Docker Compose configuration
   doctor              Run health checks
+  backup [dest]       Backup critical data
   update              Pull latest images and restart
 
 ${YELLOW}Stacks/Profiles:${NC}
@@ -118,10 +121,13 @@ ${YELLOW}Examples:${NC}
   $0 up nextcloud public-nextcloud   # Start Nextcloud with public access
   $0 down                            # Stop all services
   $0 down nextcloud                  # Stop only Nextcloud
+  $0 restart llm                     # Restart LLM stack
   $0 ps                              # Show running containers
   $0 logs nextcloud                  # View Nextcloud logs
   $0 logs -f searxng                 # Follow SearXNG logs
+  $0 validate                        # Validate compose files
   $0 doctor                          # Run health checks
+  $0 backup                          # Backup critical data
   $0 update                          # Pull and restart
 
 ${YELLOW}Notes:${NC}
@@ -201,6 +207,8 @@ cmd_up() {
 }
 
 cmd_down() {
+    check_env
+    
     info "Stopping DataAICore services..."
 
     if [ $# -eq 0 ]; then
@@ -213,6 +221,20 @@ cmd_down() {
     fi
 
     success "Services stopped"
+}
+
+cmd_restart() {
+    check_env
+    
+    if [ $# -eq 0 ]; then
+        info "Restarting all DataAICore services..."
+        cmd_down
+        cmd_up core
+    else
+        info "Restarting specified services..."
+        cmd_down "$@"
+        cmd_up "$@"
+    fi
 }
 
 cmd_ps() {
@@ -360,9 +382,49 @@ cmd_update() {
     success "Images updated"
     echo ""
     warn "Restart services to use new images:"
-    echo "  $0 down"
-    echo "  $0 up core"
+    echo "  $0 restart core"
     echo ""
+}
+
+cmd_validate() {
+    check_env
+    
+    info "Validating Docker Compose configuration..."
+    echo ""
+    
+    local status=0
+    
+    # Validate each profile
+    for profile in nextcloud websearch llm public-nextcloud; do
+        info "Checking profile: $profile"
+        if docker compose --profile "$profile" config > /dev/null 2>&1; then
+            success "Profile $profile: valid"
+        else
+            error "Profile $profile: validation failed"
+            status=1
+        fi
+    done
+    
+    echo ""
+    if [ $status -eq 0 ]; then
+        success "All compose files are valid!"
+    else
+        warn "Some compose files have errors"
+    fi
+    
+    return $status
+}
+
+cmd_backup() {
+    check_env
+    
+    local dest="${1:-}"
+    
+    if [ -n "$dest" ]; then
+        exec "$REPO_ROOT/scripts/backup.sh" "$dest"
+    else
+        exec "$REPO_ROOT/scripts/backup.sh"
+    fi
 }
 
 # ============================================================================
@@ -379,14 +441,23 @@ case "$CMD" in
     down)
         cmd_down "$@"
         ;;
+    restart)
+        cmd_restart "$@"
+        ;;
     ps)
         cmd_ps
         ;;
     logs)
         cmd_logs "$@"
         ;;
+    validate)
+        cmd_validate
+        ;;
     doctor)
         cmd_doctor
+        ;;
+    backup)
+        cmd_backup "$@"
         ;;
     update)
         cmd_update
