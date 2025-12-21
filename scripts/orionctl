@@ -172,7 +172,8 @@ cmd_up() {
     info "Starting DataAICore with profiles: ${profiles[*]}"
 
     # Build and run docker compose
-    local profile_args=$(build_profile_args "${profiles[@]}")
+    local profile_args
+    profile_args=$(build_profile_args "${profiles[@]}")
     eval "docker compose $profile_args up -d"
 
     echo ""
@@ -216,7 +217,8 @@ cmd_down() {
         docker compose --profile nextcloud --profile websearch --profile llm --profile public-nextcloud down
     else
         # Stop specific profile
-        local profile_args=$(build_profile_args "$@")
+        local profile_args
+        profile_args=$(build_profile_args "$@")
         eval "docker compose $profile_args down"
     fi
 
@@ -290,7 +292,8 @@ cmd_doctor() {
     # Docker Compose
     info "Checking Docker Compose..."
     if docker compose version &>/dev/null; then
-        local version=$(docker compose version --short)
+        local version
+        version=$(docker compose version --short)
         success "Docker Compose $version"
     else
         error "Docker Compose not found"
@@ -325,7 +328,8 @@ cmd_doctor() {
 
     # Disk space
     info "Checking disk space..."
-    local free_space=$(df -BG "$data_root" 2>/dev/null | tail -1 | awk '{print $4}' | tr -d 'G')
+    local free_space
+    free_space=$(df -BG "$data_root" 2>/dev/null | tail -1 | awk '{print $4}' | tr -d 'G')
     if [ -n "$free_space" ] && [ "$free_space" -gt 10 ]; then
         success "Disk space: ${free_space}GB free"
     else
@@ -343,7 +347,8 @@ cmd_doctor() {
 
     # Running containers
     info "Checking running containers..."
-    local containers=$(docker compose --profile nextcloud --profile websearch --profile llm ps -q 2>/dev/null | wc -l)
+    local containers
+    containers=$(docker compose --profile nextcloud --profile websearch --profile llm ps -q 2>/dev/null | wc -l)
     if [ "$containers" -gt 0 ]; then
         success "$containers container(s) running"
         docker compose --profile nextcloud --profile websearch --profile llm ps --format "table {{.Name}}\t{{.Status}}" 2>/dev/null
