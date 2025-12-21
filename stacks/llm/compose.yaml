@@ -30,8 +30,6 @@ services:
     environment:
       TZ: ${TZ:-Europe/Amsterdam}
       OLLAMA_HOST: ${OLLAMA_HOST:-0.0.0.0}
-      # Uncomment for NVIDIA GPU support:
-      # NVIDIA_VISIBLE_DEVICES: all
     volumes:
       - ${DATA_ROOT:-/srv/orion/dataaicore}/llm/ollama:/root/.ollama
     # Internal only by default - Open WebUI connects via Docker network
@@ -44,7 +42,12 @@ services:
       - dataaicore_internal
     security_opt:
       - no-new-privileges:true
-    # Uncomment for NVIDIA GPU support:
+    # GPU Support (NVIDIA):
+    # To enable GPU acceleration, uncomment BOTH sections below:
+    # 1. Environment variable:
+    # environment:
+    #   NVIDIA_VISIBLE_DEVICES: all
+    # 2. Deploy resources:
     # deploy:
     #   resources:
     #     reservations:

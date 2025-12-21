@@ -152,8 +152,16 @@ cmd_up() {
         done
     done
 
-    # Remove duplicates
-    profiles=($(echo "${profiles[@]}" | tr ' ' '\n' | sort -u | tr '\n' ' '))
+    # Remove duplicates using associative array
+    declare -A seen
+    local unique_profiles=()
+    for p in "${profiles[@]}"; do
+        if [[ -z "${seen[$p]:-}" ]]; then
+            seen[$p]=1
+            unique_profiles+=("$p")
+        fi
+    done
+    profiles=("${unique_profiles[@]}")
 
     info "Starting DataAICore with profiles: ${profiles[*]}"
 

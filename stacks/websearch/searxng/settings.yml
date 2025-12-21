@@ -30,8 +30,9 @@ search:
     - json
 
 server:
-  # Secret key - will be overridden by environment variable
-  secret_key: "CHANGE_ME_SET_BY_ENV"
+  # Secret key - set via SEARXNG_SECRET environment variable in compose.yaml
+  # This placeholder is used if env var is not set
+  secret_key: "change-me-in-env-file"
   # Rate limiter disabled in Phase 1 (no Redis)
   limiter: false
   image_proxy: true
