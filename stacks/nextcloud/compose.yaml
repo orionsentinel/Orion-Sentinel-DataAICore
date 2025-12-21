@@ -164,8 +164,7 @@ services:
     profiles:
       - nextcloud
     depends_on:
-      nextcloud:
-        condition: service_healthy
+      - nextcloud
     environment:
       TZ: ${TZ:-Europe/Amsterdam}
     volumes:

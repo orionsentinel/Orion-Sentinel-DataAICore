@@ -382,7 +382,7 @@ cmd_update() {
     success "Images updated"
     echo ""
     warn "Restart services to use new images:"
-    echo "  $0 restart core"
+    echo "  $0 restart"
     echo ""
 }
 

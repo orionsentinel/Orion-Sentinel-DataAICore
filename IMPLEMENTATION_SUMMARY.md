@@ -23,7 +23,7 @@ This PR implements comprehensive production-ready improvements to the Orion-Sent
 ```bash
 # For LAN access, update .env:
 sudo nano .env
-# Change: HOST_IP=192.0.168.1.100  # Your server's LAN IP
+# Change: HOST_IP=192.168.1.100  # Your server's LAN IP
 ./scripts/orionctl restart core
 ```
 

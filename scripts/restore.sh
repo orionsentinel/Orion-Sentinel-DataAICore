@@ -118,7 +118,13 @@ if [ -f "$DB_BACKUP" ]; then
     
     # Wait for PostgreSQL to be ready
     info "Waiting for PostgreSQL to be ready..."
-    sleep 10
+    for _ in {1..30}; do
+        if docker exec orion_dataaicore_postgres pg_isready -U "$POSTGRES_USER" > /dev/null 2>&1; then
+            success "PostgreSQL is ready"
+            break
+        fi
+        sleep 2
+    done
     
     # Drop and recreate database
     POSTGRES_USER="${POSTGRES_USER:-nextcloud}"

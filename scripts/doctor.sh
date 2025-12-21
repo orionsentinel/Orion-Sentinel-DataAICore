@@ -224,10 +224,10 @@ echo ""
 check_container() {
     local name="$1"
     local display="$2"
+    local health
     
     info "$display..."
     if docker ps --format '{{.Names}}' | grep -q "^${name}$"; then
-        local health
         health=$(docker inspect --format='{{.State.Health.Status}}' "$name" 2>/dev/null || echo "none")
         case "$health" in
             healthy)
