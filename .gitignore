@@ -1,0 +1,144 @@
+# Orion-Sentinel-DataAICore .gitignore
+# Ignore all secrets, configs, and data that should not be in version control
+
+# =============================================================================
+# ENVIRONMENT FILES (contain secrets)
+# =============================================================================
+# Never commit actual .env files - only commit .env.*.example templates
+*.env
+.env
+# Exclude all .env.* files in env/ directory
+env/.env.*
+# But allow .env.*.example templates to be committed
+!env/.env.*.example
+!env/.env.example
+
+# =============================================================================
+# SECRETS (explicit secret files)
+# =============================================================================
+secrets/*
+!secrets/README.md
+!secrets/.gitkeep
+
+# Specific secret files
+*.key
+*.pem
+*.crt
+*.cert
+*.p12
+*.pfx
+id_rsa*
+*.gpg
+acme.json
+
+# =============================================================================
+# SERVICE DATA DIRECTORIES
+# =============================================================================
+# These contain the actual service data (databases, files, etc.)
+*/data/
+*/postgres/
+*/redis/
+
+# =============================================================================
+# RUNTIME FILES
+# =============================================================================
+# SearXNG runtime settings (not the template)
+stacks/websearch/searxng/settings.yml.local
+
+# Docker Compose override files (for local customization)
+docker-compose.override.yml
+compose.override.yml
+
+# Container logs
+*.log
+
+# =============================================================================
+# BACKUP FILES
+# =============================================================================
+*.backup
+*.bak
+*.old
+*.orig
+*.swp
+*.swo
+*~
+
+# Compressed backups
+*.tar.gz
+*.tgz
+*.zip
+*.7z
+
+# Backup output directories
+backups/
+**/backup-*/
+*.backup-*/
+
+# =============================================================================
+# TEMPORARY FILES
+# =============================================================================
+tmp/
+temp/
+*.tmp
+
+# =============================================================================
+# OS-SPECIFIC
+# =============================================================================
+# macOS
+.DS_Store
+.AppleDouble
+.LSOverride
+
+# Linux
+.directory
+.Trash-*
+
+# Windows
+Thumbs.db
+ehthumbs.db
+Desktop.ini
+
+# =============================================================================
+# IDE / EDITOR
+# =============================================================================
+# VSCode
+.vscode/
+*.code-workspace
+
+# JetBrains (PyCharm, IntelliJ, etc.)
+.idea/
+*.iml
+
+# Vim
+*.swp
+*.swo
+.*.sw?
+
+# Emacs
+*~
+\#*\#
+
+# Sublime Text
+*.sublime-project
+*.sublime-workspace
+
+# =============================================================================
+# PYTHON (if using Python scripts for automation)
+# =============================================================================
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+venv/
+ENV/
+.venv
+
+# =============================================================================
+# NODE.JS (if using Node.js scripts)
+# =============================================================================
+node_modules/
+npm-debug.log
+yarn-error.log
+package-lock.json
+yarn.lock

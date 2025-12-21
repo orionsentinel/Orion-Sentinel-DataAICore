@@ -1,0 +1,60 @@
+[Unit]
+Description=Orion-Sentinel-DataAICore Docker Compose Stack
+Documentation=https://github.com/orionsentinel/Orion-Sentinel-DataAICore
+After=docker.service
+Requires=docker.service
+
+[Service]
+Type=oneshot
+RemainAfterExit=yes
+WorkingDirectory=/home/YOUR_USER/Orion-Sentinel-DataAICore
+# Change YOUR_USER to your actual username
+User=YOUR_USER
+Group=YOUR_USER
+
+# Environment file
+EnvironmentFile=/home/YOUR_USER/Orion-Sentinel-DataAICore/.env
+
+# Start all core services
+ExecStart=/usr/bin/docker compose --profile nextcloud --profile websearch --profile llm up -d
+
+# Stop all services
+ExecStop=/usr/bin/docker compose --profile nextcloud --profile websearch --profile llm down
+
+# Restart policy
+Restart=on-failure
+RestartSec=10
+
+# Logging
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=dataaicore
+
+[Install]
+WantedBy=multi-user.target
+
+# ============================================================================
+# Installation Instructions:
+#
+# 1. Copy this file to systemd:
+#    sudo cp systemd/dataaicore.service /etc/systemd/system/
+#
+# 2. Edit the file and replace YOUR_USER with your username:
+#    sudo nano /etc/systemd/system/dataaicore.service
+#
+# 3. Reload systemd:
+#    sudo systemctl daemon-reload
+#
+# 4. Enable to start on boot:
+#    sudo systemctl enable dataaicore
+#
+# 5. Start the service:
+#    sudo systemctl start dataaicore
+#
+# 6. Check status:
+#    sudo systemctl status dataaicore
+#
+# 7. View logs:
+#    sudo journalctl -u dataaicore -f
+#
+# ============================================================================

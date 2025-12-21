@@ -1,0 +1,92 @@
+# Orion-Sentinel-DataAICore - Profiles Reference
+#
+# This file documents the available Docker Compose profiles.
+# Profiles control which services are started.
+#
+# Usage:
+#   ./scripts/orionctl up <profile> [profile...]
+#   docker compose --profile <profile> up -d
+#
+
+# ==============================================================================
+# AVAILABLE PROFILES
+# ==============================================================================
+
+# Profile: nextcloud
+# -----------------
+# Services: PostgreSQL, Redis, Nextcloud, Nextcloud Cron
+# Purpose: Self-hosted cloud file sync and collaboration
+# Access: http://${HOST_IP}:8080
+# Dependencies: None
+#
+# Usage:
+#   ./scripts/orionctl up nextcloud
+
+# Profile: websearch
+# ------------------
+# Services: SearXNG
+# Purpose: Privacy-focused meta-search engine
+# Access: http://${HOST_IP}:8888
+# Dependencies: None
+# Note: Phase 1 - No local document indexing (no Meilisearch/Tika)
+#
+# Usage:
+#   ./scripts/orionctl up websearch
+
+# Profile: llm
+# ------------
+# Services: Ollama, Open WebUI
+# Purpose: Local LLM inference with ChatGPT-like interface
+# Access: http://${HOST_IP}:3000 (Open WebUI)
+# Dependencies: None
+# Note: Requires pulling a model after startup
+#
+# Usage:
+#   ./scripts/orionctl up llm
+#   ./scripts/pull-model.sh llama3.2:3b
+
+# Profile: public-nextcloud
+# -------------------------
+# Services: Caddy reverse proxy
+# Purpose: Expose ONLY Nextcloud to the internet
+# Access: https://cloud.${ORION_DOMAIN}
+# Dependencies: nextcloud profile must also be enabled
+# Requirements:
+#   - Domain name with DNS A record
+#   - Router port forwarding (443 → server)
+#   - ORION_DOMAIN set in .env
+#
+# Usage:
+#   ./scripts/orionctl up nextcloud public-nextcloud
+
+# ==============================================================================
+# BUNDLES (SHORTCUTS)
+# ==============================================================================
+
+# Bundle: core
+# ------------
+# Profiles: nextcloud + websearch + llm
+# Purpose: All primary services for daily use
+#
+# Usage:
+#   ./scripts/orionctl up core
+
+# ==============================================================================
+# RECOMMENDED CONFIGURATIONS
+# ==============================================================================
+
+# Minimal (just cloud storage):
+#   ./scripts/orionctl up nextcloud
+
+# Cloud + Search:
+#   ./scripts/orionctl up nextcloud websearch
+
+# Cloud + AI:
+#   ./scripts/orionctl up nextcloud llm
+
+# Full Stack (recommended):
+#   ./scripts/orionctl up core
+
+# Public Nextcloud (internet-accessible):
+#   ./scripts/orionctl up nextcloud public-nextcloud
+#   (Other services remain local-only)

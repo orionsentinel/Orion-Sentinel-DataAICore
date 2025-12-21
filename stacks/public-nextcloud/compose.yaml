@@ -1,0 +1,69 @@
+# Orion-Sentinel-DataAICore - Public Nextcloud Stack
+# Caddy reverse proxy for public Nextcloud access
+#
+# Profile: public-nextcloud
+#
+# ⚠️ WARNING: This profile exposes Nextcloud to the INTERNET!
+# Only enable if you understand the security implications.
+#
+# Prerequisites:
+#   1. Domain name (e.g., cloud.yourdomain.com)
+#   2. DNS A record pointing to your public IP
+#   3. Router port forwarding: 443 → OptiPlex IP
+#   4. ORION_DOMAIN set in .env
+#   5. 2FA enabled in Nextcloud
+#
+# Usage:
+#   ./scripts/orionctl up nextcloud public-nextcloud
+#
+# To edit this file:
+#   sudo nano stacks/public-nextcloud/compose.yaml
+#
+# SECURITY: Only Nextcloud is exposed!
+# SearXNG, Open WebUI, and Ollama remain LOCAL ONLY.
+
+services:
+  # ============================================================================
+  # CADDY REVERSE PROXY
+  # Automatic HTTPS via Let's Encrypt
+  # Routes ONLY to Nextcloud
+  # ============================================================================
+
+  caddy:
+    image: caddy:2-alpine
+    container_name: orion_dataaicore_caddy
+    restart: unless-stopped
+    profiles:
+      - public-nextcloud
+    environment:
+      TZ: ${TZ:-Europe/Amsterdam}
+      ORION_DOMAIN: ${ORION_DOMAIN}
+    ports:
+      # HTTPS - forwarded from router
+      - "0.0.0.0:443:443"
+      # HTTP - for ACME challenges and redirect
+      - "0.0.0.0:80:80"
+    volumes:
+      - ./proxy/Caddyfile:/etc/caddy/Caddyfile:ro
+      - ${DATA_ROOT:-/srv/orion/dataaicore}/caddy/data:/data
+      - ${DATA_ROOT:-/srv/orion/dataaicore}/caddy/config:/config
+    networks:
+      - dataaicore_internal
+    security_opt:
+      - no-new-privileges:true
+    healthcheck:
+      test: ["CMD", "wget", "-q", "--spider", "http://localhost:80/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 30s
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "5"
+
+networks:
+  dataaicore_internal:
+    name: dataaicore_internal
+    external: true

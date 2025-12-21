@@ -1,0 +1,80 @@
+# Caddyfile for Orion-Sentinel-DataAICore Public Nextcloud
+#
+# This configuration ONLY exposes Nextcloud to the internet.
+# All other services (SearXNG, Open WebUI, Ollama) remain LOCAL ONLY.
+#
+# Edit with: sudo nano stacks/public-nextcloud/proxy/Caddyfile
+#
+# After editing, restart Caddy:
+#   docker restart orion_dataaicore_caddy
+#
+# Prerequisites:
+#   - ORION_DOMAIN set in .env
+#   - DNS A record: cloud.yourdomain.com → your public IP
+#   - Router port forwarding: 443 → this server
+
+# Health check endpoint (for Docker healthcheck)
+:80 {
+	respond /health 200
+	# Redirect all other HTTP traffic to HTTPS
+	redir https://{host}{uri} permanent
+}
+
+# Nextcloud - ONLY service exposed publicly
+cloud.{$ORION_DOMAIN} {
+	# Reverse proxy to Nextcloud container
+	reverse_proxy nextcloud:80 {
+		# Headers for Nextcloud behind reverse proxy
+		header_up X-Forwarded-Proto https
+		header_up X-Real-IP {remote_host}
+		header_up X-Forwarded-For {remote_host}
+		header_up X-Forwarded-Host {host}
+
+		# Increase timeouts for large file uploads
+		transport http {
+			dial_timeout 30s
+			response_header_timeout 300s
+			read_timeout 300s
+			write_timeout 300s
+		}
+	}
+
+	# Security headers
+	header {
+		# HSTS - enforce HTTPS
+		Strict-Transport-Security "max-age=31536000; includeSubDomains; preload"
+		# Prevent content type sniffing
+		X-Content-Type-Options "nosniff"
+		# Clickjacking protection
+		X-Frame-Options "SAMEORIGIN"
+		# XSS protection
+		X-XSS-Protection "1; mode=block"
+		# Referrer policy
+		Referrer-Policy "strict-origin-when-cross-origin"
+		# Permissions policy
+		Permissions-Policy "geolocation=(), microphone=(), camera=()"
+		# Remove server header
+		-Server
+	}
+
+	# Enable Gzip compression
+	encode gzip
+
+	# Access logging
+	log {
+		output file /data/access.log {
+			roll_size 10mb
+			roll_keep 5
+		}
+		format json
+	}
+
+	# Automatic HTTPS via Let's Encrypt
+	# Caddy handles certificate provisioning automatically
+}
+
+# HARD GUARDRAILS - Block any other subdomains
+# This ensures ONLY Nextcloud is exposed
+*.{$ORION_DOMAIN} {
+	respond "Not Found" 404
+}
