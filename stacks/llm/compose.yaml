@@ -31,17 +31,19 @@ services:
       - llm
     environment:
       TZ: ${TZ:-Europe/Amsterdam}
-      OLLAMA_HOST: ${OLLAMA_HOST:-0.0.0.0}
+      # Internal only - no external exposure
+      OLLAMA_HOST: 0.0.0.0
     volumes:
       - ${DATA_ROOT:-/srv/orion/dataaicore}/llm/ollama:/root/.ollama
-    # Internal only by default - Open WebUI connects via Docker network
-    # Uncomment to expose Ollama API to LAN:
+    # Ollama is INTERNAL ONLY - no published ports
+    # Open WebUI connects via Docker network
+    # To expose API to LAN (NOT recommended), uncomment:
     # ports:
     #   - "${HOST_IP:-127.0.0.1}:11434:11434"
     expose:
       - "11434"
     networks:
-      - dataaicore_internal
+      - internal
     security_opt:
       - no-new-privileges:true
     # GPU Support (NVIDIA):
@@ -111,7 +113,8 @@ services:
     ports:
       - "${HOST_IP:-127.0.0.1}:3000:8080"
     networks:
-      - dataaicore_internal
+      - internal
+      - lan
     security_opt:
       - no-new-privileges:true
     healthcheck:
@@ -131,6 +134,13 @@ services:
           memory: "512M"
 
 networks:
-  dataaicore_internal:
+  # Internal network for service-to-service communication only
+  internal:
     name: dataaicore_internal
-    external: true
+    driver: bridge
+    internal: false
+  
+  # LAN network for services that need to be accessible from the network
+  lan:
+    name: dataaicore_lan
+    driver: bridge

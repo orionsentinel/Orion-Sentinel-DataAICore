@@ -165,16 +165,27 @@ success "Directory structure created"
 echo ""
 
 # ============================================================================
-# Create Docker Network
+# Create Docker Networks
 # ============================================================================
 
-info "Creating Docker network: dataaicore_internal"
+info "Creating Docker networks..."
+
+# Internal network
 if docker network inspect dataaicore_internal &> /dev/null; then
-    info "Network already exists"
+    info "Network dataaicore_internal already exists"
 else
     docker network create dataaicore_internal
-    success "Network created"
+    success "Network dataaicore_internal created"
 fi
+
+# LAN network
+if docker network inspect dataaicore_lan &> /dev/null; then
+    info "Network dataaicore_lan already exists"
+else
+    docker network create dataaicore_lan
+    success "Network dataaicore_lan created"
+fi
+
 echo ""
 
 # ============================================================================

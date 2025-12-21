@@ -175,6 +175,13 @@ else
     warn "Does not exist - will be created on first up"
 fi
 
+info "Docker network (dataaicore_lan)..."
+if docker network inspect dataaicore_lan &>/dev/null; then
+    success "Exists"
+else
+    warn "Does not exist - will be created on first up"
+fi
+
 # Port availability/usage
 info "Port 8080 (Nextcloud)..."
 if ss -lntp 2>/dev/null | grep -q ":8080 "; then
