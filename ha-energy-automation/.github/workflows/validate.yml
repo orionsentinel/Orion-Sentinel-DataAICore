@@ -1,0 +1,76 @@
+---
+name: Validate YAML
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'packages/**'
+      - 'dashboards/**'
+      - 'scripts/**'
+      - '.github/workflows/validate.yml'
+  pull_request:
+    branches: [main]
+    paths:
+      - 'packages/**'
+      - 'dashboards/**'
+      - 'scripts/**'
+
+jobs:
+  yamllint:
+    name: Lint YAML files
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Install yamllint
+        run: pip install yamllint
+
+      - name: Create yamllint config
+        run: |
+          cat > .yamllint.yml << 'EOF'
+          ---
+          extends: relaxed
+          rules:
+            line-length:
+              max: 200
+              level: warning
+            truthy:
+              allowed-values: ['true', 'false', 'on', 'off', 'yes', 'no']
+              check-keys: false
+            comments:
+              min-spaces-from-content: 1
+            braces:
+              max-spaces-inside: 1
+            brackets:
+              max-spaces-inside: 1
+            indentation:
+              spaces: 2
+              indent-sequences: true
+              check-multi-line-strings: false
+          EOF
+
+      - name: Lint packages/
+        run: yamllint -c .yamllint.yml packages/
+
+      - name: Lint dashboards/
+        run: yamllint -c .yamllint.yml dashboards/
+
+      - name: Lint scripts/
+        run: yamllint -c .yamllint.yml scripts/
+
+      - name: Summary
+        if: always()
+        run: |
+          echo "## YAML Validation Summary" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "Linted files in packages/, dashboards/, scripts/" >> $GITHUB_STEP_SUMMARY
+          yamllint -c .yamllint.yml packages/ dashboards/ scripts/ --format github 2>&1 | \
+            tail -20 >> $GITHUB_STEP_SUMMARY || true

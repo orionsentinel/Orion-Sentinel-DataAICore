@@ -1,0 +1,250 @@
+---
+# appliances.yaml
+# Smart appliance scheduling based on Nord Pool prices (cheapest overnight hours).
+# Controls washing machine, dishwasher, and dryer via smart plugs.
+#
+# PLACEHOLDER ENTITIES — replace with your actual entity IDs:
+#   switch.washing_machine_smart_plug  ← replace with your washing machine smart plug
+#   switch.dishwasher_smart_plug       ← replace with your dishwasher smart plug
+#   switch.dryer_smart_plug            ← replace with your dryer smart plug
+#
+# Triggered by binary_sensor.cheapest_4_hours_overnight from AIO Energy Management.
+
+input_boolean:
+  washing_machine_pending:
+    name: "Wasmachine wacht op schema"
+    icon: mdi:washing-machine
+    initial: false
+
+  dishwasher_pending:
+    name: "Vaatwasser wacht op schema"
+    icon: mdi:dishwasher
+    initial: false
+
+  dryer_pending:
+    name: "Droger wacht op schema"
+    icon: mdi:tumble-dryer
+    initial: false
+
+  appliances_smart_scheduling:
+    name: "Slim apparatenschema ingeschakeld"
+    icon: mdi:calendar-clock
+    initial: true
+
+automation:
+  # ─────────────────────────────────────────────────────────────────────────────
+  # Washing machine: start at the cheapest overnight window
+  # ─────────────────────────────────────────────────────────────────────────────
+  - id: appliance_washing_machine_cheap_window
+    alias: "Wasmachine: starten bij goedkoop uur"
+    description: >
+      When the cheapest 4-hour overnight window starts and washing_machine_pending
+      is on, turn on the washing machine smart plug.
+    trigger:
+      - platform: state
+        entity_id: binary_sensor.cheapest_4_hours_overnight
+        to: "on"
+    condition:
+      - condition: state
+        entity_id: input_boolean.appliances_smart_scheduling
+        state: "on"
+      - condition: state
+        entity_id: input_boolean.washing_machine_pending
+        state: "on"
+      - condition: template
+        value_template: >
+          {{ states('switch.washing_machine_smart_plug') not in ['unavailable', 'unknown'] }}
+    action:
+      - service: switch.turn_on
+        target:
+          entity_id: switch.washing_machine_smart_plug  # ← replace with your entity
+      - service: input_boolean.turn_off
+        target:
+          entity_id: input_boolean.washing_machine_pending
+      - service: notify.mobile_app  # ← replace with your notify service
+        data:
+          title: "Wasmachine gestart"
+          message: >
+            Goedkoop uur: {{ states('sensor.energy_price_all_in') | float | round(4) }} €/kWh.
+            Wasmachine gestart voor slim schema.
+          data:
+            tag: washing_machine_started
+    mode: single
+
+  # ─────────────────────────────────────────────────────────────────────────────
+  # Dishwasher: start at the cheapest overnight window
+  # ─────────────────────────────────────────────────────────────────────────────
+  - id: appliance_dishwasher_cheap_window
+    alias: "Vaatwasser: starten bij goedkoop uur"
+    description: >
+      When the cheapest 4-hour overnight window starts and dishwasher_pending
+      is on, turn on the dishwasher smart plug.
+    trigger:
+      - platform: state
+        entity_id: binary_sensor.cheapest_4_hours_overnight
+        to: "on"
+    condition:
+      - condition: state
+        entity_id: input_boolean.appliances_smart_scheduling
+        state: "on"
+      - condition: state
+        entity_id: input_boolean.dishwasher_pending
+        state: "on"
+      - condition: template
+        value_template: >
+          {{ states('switch.dishwasher_smart_plug') not in ['unavailable', 'unknown'] }}
+    action:
+      - service: switch.turn_on
+        target:
+          entity_id: switch.dishwasher_smart_plug  # ← replace with your entity
+      - service: input_boolean.turn_off
+        target:
+          entity_id: input_boolean.dishwasher_pending
+      - service: notify.mobile_app  # ← replace with your notify service
+        data:
+          title: "Vaatwasser gestart"
+          message: >
+            Goedkoop uur: {{ states('sensor.energy_price_all_in') | float | round(4) }} €/kWh.
+            Vaatwasser gestart voor slim schema.
+          data:
+            tag: dishwasher_started
+    mode: single
+
+  # ─────────────────────────────────────────────────────────────────────────────
+  # Dryer: start 2 hours after the cheapest overnight window opens
+  # (runs after the washing machine has time to finish its cycle)
+  # ─────────────────────────────────────────────────────────────────────────────
+  - id: appliance_dryer_cheap_window_delayed
+    alias: "Droger: starten 2 uur na goedkoop uur (na wasmachine)"
+    description: >
+      Starts the dryer 2 hours into the cheapest overnight window, giving the
+      washing machine time to complete its cycle first.
+    trigger:
+      - platform: state
+        entity_id: binary_sensor.cheapest_4_hours_overnight
+        to: "on"
+    condition:
+      - condition: state
+        entity_id: input_boolean.appliances_smart_scheduling
+        state: "on"
+      - condition: state
+        entity_id: input_boolean.dryer_pending
+        state: "on"
+      - condition: template
+        value_template: >
+          {{ states('switch.dryer_smart_plug') not in ['unavailable', 'unknown'] }}
+    action:
+      - delay: "02:00:00"
+      - condition: state
+        entity_id: input_boolean.dryer_pending
+        state: "on"
+      - service: switch.turn_on
+        target:
+          entity_id: switch.dryer_smart_plug  # ← replace with your entity
+      - service: input_boolean.turn_off
+        target:
+          entity_id: input_boolean.dryer_pending
+      - service: notify.mobile_app  # ← replace with your notify service
+        data:
+          title: "Droger gestart"
+          message: >
+            Goedkoop uur: {{ states('sensor.energy_price_all_in') | float | round(4) }} €/kWh.
+            Droger gestart (2 uur na goedkoop venster start).
+          data:
+            tag: dryer_started
+    mode: single
+
+  # ─────────────────────────────────────────────────────────────────────────────
+  # Morning cleanup: reset all pending flags at 09:00
+  # ─────────────────────────────────────────────────────────────────────────────
+  - id: appliance_morning_cleanup_pending_flags
+    alias: "Apparaten: ochtend opruiming van wachtende vlaggen"
+    description: >
+      Resets all appliance pending flags at 09:00 to prevent them from
+      accidentally triggering during the next evening's cheap window.
+    trigger:
+      - platform: time
+        at: "09:00:00"
+    condition: []
+    action:
+      - service: input_boolean.turn_off
+        target:
+          entity_id:
+            - input_boolean.washing_machine_pending
+            - input_boolean.dishwasher_pending
+            - input_boolean.dryer_pending
+    mode: single
+
+  # ─────────────────────────────────────────────────────────────────────────────
+  # Evening prompt: notify if tomorrow has very cheap hours
+  # ─────────────────────────────────────────────────────────────────────────────
+  - id: appliance_evening_cheap_tomorrow_prompt
+    alias: "Apparaten: avondmelding bij goedkope uren morgen"
+    description: >
+      Sends an actionable notification at 20:30 if tomorrow has hours below
+      €0.05/kWh, prompting the user to enable appliance scheduling.
+    trigger:
+      - platform: time
+        at: "20:30:00"
+    condition:
+      - condition: template
+        value_template: >
+          {% set prices = state_attr('sensor.nord_pool_nl_current_price', 'tomorrow') %}
+          {% if prices %}
+            {{ prices | select('lt', 0.05) | list | count > 0 }}
+          {% else %}
+            false
+          {% endif %}
+    action:
+      - service: notify.mobile_app  # ← replace with your notify service
+        data:
+          title: "Goedkope stroom morgen!"
+          message: >
+            {% set prices = state_attr('sensor.nord_pool_nl_current_price', 'tomorrow') %}
+            {% set cheap_count = prices | select('lt', 0.05) | list | count %}
+            Morgen zijn er {{ cheap_count }} uur(en) onder €0.05/kWh (spotprijs).
+            Zet apparaten klaar voor slim schema.
+          data:
+            tag: cheap_tomorrow
+            actions:
+              - action: "ENABLE_WASHING_MACHINE"
+                title: "Wasmachine inplannen"
+              - action: "ENABLE_DISHWASHER"
+                title: "Vaatwasser inplannen"
+    mode: single
+
+  # ─────────────────────────────────────────────────────────────────────────────
+  # Handle notification actions for appliance scheduling
+  # ─────────────────────────────────────────────────────────────────────────────
+  - id: appliance_handle_notification_action
+    alias: "Apparaten: verwerk meldingsactie"
+    description: "Handles actionable notification responses for appliance scheduling."
+    trigger:
+      - platform: event
+        event_type: mobile_app_notification_action
+        event_data:
+          action: "ENABLE_WASHING_MACHINE"
+      - platform: event
+        event_type: mobile_app_notification_action
+        event_data:
+          action: "ENABLE_DISHWASHER"
+    action:
+      - choose:
+          - conditions:
+              - condition: template
+                value_template: >
+                  {{ trigger.event.data.action == 'ENABLE_WASHING_MACHINE' }}
+            sequence:
+              - service: input_boolean.turn_on
+                target:
+                  entity_id: input_boolean.washing_machine_pending
+          - conditions:
+              - condition: template
+                value_template: >
+                  {{ trigger.event.data.action == 'ENABLE_DISHWASHER' }}
+            sequence:
+              - service: input_boolean.turn_on
+                target:
+                  entity_id: input_boolean.dishwasher_pending
+    mode: queued
+    max: 5

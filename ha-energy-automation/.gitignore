@@ -1,0 +1,42 @@
+# Home Assistant secrets and credentials
+secrets.yaml
+*.secret
+
+# HA internal storage (not for version control)
+.storage/
+home-assistant_v2.db
+home-assistant_v2.db-shm
+home-assistant_v2.db-wal
+home-assistant.log
+home-assistant.log.1
+home-assistant.log.fault
+
+# Custom components and HACS frontend (managed by HACS, not this repo)
+custom_components/
+www/community/
+
+# macOS
+.DS_Store
+.AppleDouble
+.LSOverride
+
+# Windows
+Thumbs.db
+ehthumbs.db
+Desktop.ini
+
+# Editor directories
+.idea/
+.vscode/
+*.swp
+*.swo
+*~
+
+# Python
+__pycache__/
+*.py[cod]
+*.pyo
+
+# Backups
+*.bak
+*.backup
