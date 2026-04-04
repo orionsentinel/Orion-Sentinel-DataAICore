@@ -1,0 +1,10 @@
+server:
+  name: "Persona"
+  version: "0.1.0"
+  transport: "stdio"   # stdio for local MCP clients — no network port opened
+
+# Path to the persona data directory.
+# ~ is expanded to your home directory.
+persona_dir: "~/.persona"
+
+log_level: "INFO"

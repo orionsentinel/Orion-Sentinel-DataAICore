@@ -1,0 +1,24 @@
+# Persona client allowlist
+# Maps MCP client identifiers to ring access levels.
+#
+# Ring 1 — public identity (all clients get this automatically)
+# Ring 2 — contextual data (goals, current focus, relationships, preferences)
+# Ring 3 — sensitive constraints (constraints.md only)
+#
+# Note: private.md is NEVER served regardless of ring level.
+#
+# The client identifier matches the MCP_CLIENT_NAME environment variable
+# set by the connecting client, or the "name" field in MCP handshake.
+
+clients:
+  claude-desktop:
+    ring: 2
+    description: "Primary AI assistant — trusted with contextual data"
+
+  cursor:
+    ring: 1
+    description: "Code editor — public identity only"
+
+  unknown:
+    ring: 1
+    description: "Default for unrecognised clients — public identity only"

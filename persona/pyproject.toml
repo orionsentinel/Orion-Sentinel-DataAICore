@@ -1,0 +1,39 @@
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[project]
+name = "persona"
+version = "0.1.0"
+description = "Sovereign AI identity infrastructure via Model Context Protocol"
+readme = "README.md"
+license = { text = "MIT" }
+requires-python = ">=3.11"
+dependencies = [
+    "mcp>=1.0.0",
+    "pyyaml>=6.0",
+    "jsonschema>=4.0",
+    "click>=8.0",
+    "rich>=13.0",
+]
+
+[project.scripts]
+persona = "persona.server.main:cli"
+
+[tool.hatch.build.targets.wheel]
+packages = ["persona"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+python_files = ["test_*.py"]
+
+[tool.coverage.run]
+source = ["persona"]
+omit = ["tests/*"]
+
+[dependency-groups]
+dev = [
+    "pytest>=7.0",
+    "pytest-cov>=4.0",
+    "pytest-asyncio>=0.21",
+]
