@@ -1,0 +1,195 @@
+---
+# 08_solar_forecast.yaml
+# ──────────────────────────────────────────────────────────────────────────────
+# Solar production forecasting using Forecast.Solar (or Solcast via HACS).
+# Used by 05_battery_automations.yaml to make daily grid-charging decisions.
+#
+# Panel specs (update in Forecast.Solar integration config):
+#   Total: ~4 kWp, south-facing, Netherlands
+#   Typical annual production: ~4,200 kWh/year
+#
+# See docs/SETUP.md Step 6 for Forecast.Solar configuration.
+# If using Solcast instead, update entity names below (see docs/ENTITY_NAMES.md).
+# ──────────────────────────────────────────────────────────────────────────────
+
+input_number:
+  solar_sunny_day_threshold:
+    name: "Zonnige dag drempelwaarde"
+    min: 5
+    max: 35
+    step: 0.5
+    unit_of_measurement: "kWh"
+    icon: mdi:weather-sunny
+    initial: 15
+    # Forecast.Solar tomorrow > this value → classified as "sunny".
+    # Adjust based on your actual panel output. 4kWp south NL: ~20kWh peak summer day.
+
+  solar_cloud_day_threshold:
+    name: "Bewolkte dag drempelwaarde"
+    min: 1
+    max: 15
+    step: 0.5
+    unit_of_measurement: "kWh"
+    icon: mdi:weather-cloudy
+    initial: 5
+    # Forecast.Solar tomorrow < this value → classified as "cloudy".
+
+template:
+  - sensor:
+      - name: "solar_forecast_tomorrow_kwh"
+        unique_id: solar_forecast_tomorrow_kwh
+        unit_of_measurement: "kWh"
+        state_class: measurement
+        icon: mdi:solar-power
+        state: >
+          {{ states('sensor.forecast_solar_energy_production_tomorrow') | float(0) | round(2) }}
+        availability: >
+          {{ states('sensor.forecast_solar_energy_production_tomorrow') not in ['unavailable', 'unknown', 'none'] }}
+        # If using Solcast instead of Forecast.Solar:
+        # Replace: sensor.forecast_solar_energy_production_tomorrow
+        # With:    sensor.solcast_pv_forecast_tomorrow
+
+      - name: "solar_forecast_category"
+        unique_id: solar_forecast_category
+        icon: mdi:weather-partly-cloudy
+        state: >
+          {% set forecast = states('sensor.forecast_solar_energy_production_tomorrow') | float(-1) %}
+          {% set sunny_t = states('input_number.solar_sunny_day_threshold') | float(15) %}
+          {% set cloud_t = states('input_number.solar_cloud_day_threshold') | float(5) %}
+          {% if forecast < 0 %}
+            unknown
+          {% elif forecast >= sunny_t %}
+            sunny
+          {% elif forecast > cloud_t %}
+            partly_cloudy
+          {% else %}
+            cloudy
+          {% endif %}
+        availability: >
+          {{ states('sensor.forecast_solar_energy_production_tomorrow') not in ['unavailable', 'unknown', 'none'] }}
+        attributes:
+          forecast_kwh: >
+            {{ states('sensor.forecast_solar_energy_production_tomorrow') | float(0) | round(1) }}
+          sunny_threshold: >
+            {{ states('input_number.solar_sunny_day_threshold') | float(15) }}
+          cloudy_threshold: >
+            {{ states('input_number.solar_cloud_day_threshold') | float(5) }}
+
+      - name: "battery_grid_topup_needed_kwh"
+        unique_id: battery_grid_topup_needed_kwh
+        unit_of_measurement: "kWh"
+        state_class: measurement
+        icon: mdi:battery-plus
+        # Expected energy shortfall: average consumption (13.7 kWh/day NL household)
+        # minus tomorrow's solar forecast minus current battery energy available.
+        # If battery unavailable: uses 0 kWh available (conservative estimate).
+        state: >
+          {% set avg = 13.7 %}
+          {% set forecast = states('sensor.forecast_solar_energy_production_tomorrow') | float(0) %}
+          {% set batt_kwh = states('sensor.battery_energy_remaining_kwh') | float(0) %}
+          {{ [avg - forecast - batt_kwh, 0] | max | round(2) }}
+        availability: >
+          {{ states('sensor.forecast_solar_energy_production_tomorrow') not in ['unavailable', 'unknown', 'none'] }}
+        attributes:
+          avg_daily_consumption_kwh: 13.7
+          forecast_kwh: >
+            {{ states('sensor.forecast_solar_energy_production_tomorrow') | float(0) | round(2) }}
+          battery_available_kwh: >
+            {{ states('sensor.battery_energy_remaining_kwh') | float(0) | round(2) }}
+
+  - binary_sensor:
+      - name: "tomorrow_is_sunny"
+        unique_id: tomorrow_is_sunny
+        icon: mdi:weather-sunny
+        state: >
+          {{ states('sensor.solar_forecast_category') == 'sunny' }}
+        availability: >
+          {{ states('sensor.solar_forecast_category') not in ['unavailable', 'unknown', 'none'] }}
+
+      - name: "battery_will_fill_naturally"
+        unique_id: battery_will_fill_naturally
+        icon: mdi:battery-charging-100
+        # True if tomorrow's forecast exceeds 20 kWh — enough to fill the 9.7 kWh battery
+        # AND cover most of the average 13.7 kWh daily consumption from solar.
+        state: >
+          {% set forecast = states('sensor.forecast_solar_energy_production_tomorrow') | float(0) %}
+          {{ forecast >= 20.0 }}
+        availability: >
+          {{ states('sensor.forecast_solar_energy_production_tomorrow') not in ['unavailable', 'unknown', 'none'] }}
+
+      - name: "good_solar_day_today"
+        unique_id: good_solar_day_today
+        icon: mdi:solar-power
+        state: >
+          {% set forecast_today = states('sensor.forecast_solar_energy_production_today') | float(0) %}
+          {% set cloud_t = states('input_number.solar_cloud_day_threshold') | float(5) %}
+          {{ forecast_today > cloud_t }}
+        availability: >
+          {{ states('sensor.forecast_solar_energy_production_today') not in ['unavailable', 'unknown', 'none'] }}
+
+automation:
+  # ─────────────────────────────────────────────────────────────────────────────
+  # 14:00 fault check: good forecast but very low production
+  # ─────────────────────────────────────────────────────────────────────────────
+  - id: solar_forecast_production_fault_alert
+    alias: "Zonnepaneel: alert bij lage productie ondanks goede forecast"
+    description: >
+      At 14:00 (solar peak hours), if today was forecast as a good solar day
+      but actual AC power is below 200W, send a fault alert. This may indicate:
+      - Inverter shutdown or fault
+      - Panel shading or soiling
+      - Modbus connection lost (check binary_sensor.modbus_available)
+      - Grid fault causing inverter to disconnect
+    trigger:
+      - platform: time
+        at: "14:00:00"
+    condition:
+      - condition: state
+        entity_id: binary_sensor.good_solar_day_today
+        state: "on"
+      - condition: state
+        entity_id: binary_sensor.modbus_available
+        state: "on"
+      - condition: template
+        value_template: >
+          {{ states('sensor.solaredge_i1_ac_power') | float(0) < 200 }}
+    action:
+      - service: !secret notify_target
+        data:
+          title: "⚠️ Lage zonnepaneel productie!"
+          message: >
+            Goede forecast ({{ states('sensor.forecast_solar_energy_production_today') | float(0) | round(1) }} kWh verwacht),
+            maar huidige productie: {{ states('sensor.solaredge_i1_ac_power') | float(0) | round(0) }} W.
+            Controleer de omvormer op fouten via de SolarEdge monitoring app.
+          data:
+            tag: solar_fault_alert
+            importance: high
+    mode: single
+
+  # ─────────────────────────────────────────────────────────────────────────────
+  # Daily sunset summary
+  # ─────────────────────────────────────────────────────────────────────────────
+  - id: solar_daily_sunset_summary
+    alias: "Zonnepaneel: dagelijkse samenvatting bij zonsondergang"
+    description: "Sends a daily energy production summary 30 minutes after sunset."
+    trigger:
+      - platform: sun
+        event: sunset
+        offset: "00:30:00"
+    condition: []
+    action:
+      - service: !secret notify_target
+        data:
+          title: "📊 Dagelijkse energie samenvatting"
+          message: >
+            ☀️ Productie: {{ states('sensor.daily_solar_production') | float(0) | round(1) }} kWh
+            🏠 Netimport: {{ states('sensor.daily_grid_import') | float(0) | round(1) }} kWh
+            ⚡ Netexport: {{ states('sensor.daily_grid_export') | float(0) | round(1) }} kWh
+            {% if states('binary_sensor.battery_available') == 'on' %}
+            🔋 Batterij SoC: {{ states('sensor.battery_soc_pct') | float(0) | round(0) }}%
+            {% endif %}
+            💶 Prijs nu: {{ states('sensor.energy_price_all_in') | float(0) | round(4) }} €/kWh
+            🌅 Morgen forecast: {{ states('sensor.solar_forecast_tomorrow_kwh') | float(0) | round(1) }} kWh ({{ states('sensor.solar_forecast_category') }})
+          data:
+            tag: daily_summary
+    mode: single

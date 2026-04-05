@@ -1,0 +1,298 @@
+---
+# 07_appliances.yaml
+# ──────────────────────────────────────────────────────────────────────────────
+# Smart appliance scheduling based on AIO Energy Management cheapest overnight hours.
+# Controls washing machine, dishwasher, and dryer via smart plugs.
+#
+# PLACEHOLDER ENTITIES — replace with your actual entity IDs:
+#   switch.washing_machine_smart_plug  ← replace with your washing machine smart plug
+#   switch.dishwasher_smart_plug       ← replace with your dishwasher smart plug
+#   switch.dryer_smart_plug            ← replace with your dryer smart plug
+#
+# FRESHNESS GUARD: All automations check sensor.price_freshness_ok before acting.
+# If prices are stale, the automation NO-OPs to prevent scheduling on wrong data.
+#
+# DST NOTE: The cheapest_4h_overnight window is calculated by AIO Energy Management
+# based on price ranking, not fixed times. However, AIO's overnight window spans
+# midnight and may shift by 1 hour on DST transition days (last Sunday March/October NL).
+# The 09:00 morning reset and 20:30 evening prompt use fixed time triggers —
+# on DST days these may fire at 08:00 or 10:00 solar time. This is acceptable
+# for these non-critical scheduling triggers.
+#
+# All price-triggered appliance automations also check that the current time is
+# between 20:00 and 08:00 to prevent daytime misfires.
+# ──────────────────────────────────────────────────────────────────────────────
+
+input_boolean:
+  washing_machine_pending:
+    name: "Wasmachine wacht op schema"
+    icon: mdi:washing-machine
+    initial: false
+
+  dishwasher_pending:
+    name: "Vaatwasser wacht op schema"
+    icon: mdi:dishwasher
+    initial: false
+
+  dryer_pending:
+    name: "Droger wacht op schema"
+    icon: mdi:tumble-dryer
+    initial: false
+
+  appliances_smart_scheduling:
+    name: "Slim apparatenschema ingeschakeld"
+    icon: mdi:calendar-clock
+    initial: true
+
+automation:
+  # ─────────────────────────────────────────────────────────────────────────────
+  # Washing machine: start at cheapest overnight window
+  # ─────────────────────────────────────────────────────────────────────────────
+  - id: appliance_washing_machine_cheap_window
+    alias: "Wasmachine: starten bij goedkoop venster"
+    description: >
+      When the AIO cheapest 4-hour overnight window opens AND washing machine
+      is pending, turn on the smart plug.
+      DST NOTE: triggered by binary_sensor state change — DST safe.
+      Time guard: only fires between 20:00 and 08:00 to prevent daytime misfires.
+    trigger:
+      - platform: state
+        entity_id: binary_sensor.cheapest_4h_overnight
+        to: "on"
+    condition:
+      - condition: state
+        entity_id: input_boolean.appliances_smart_scheduling
+        state: "on"
+      - condition: state
+        entity_id: input_boolean.washing_machine_pending
+        state: "on"
+      - condition: template
+        value_template: "{{ states('sensor.price_freshness_ok') == 'true' }}"
+      - condition: template
+        value_template: >
+          {# Time guard: only between 20:00 and 08:00. DST: may shift ±1h on transition days. #}
+          {% set h = now().hour %}
+          {{ h >= 20 or h < 8 }}
+      - condition: template
+        value_template: >
+          {{ states('switch.washing_machine_smart_plug') not in ['unavailable', 'unknown'] }}
+    action:
+      - service: switch.turn_on
+        target:
+          entity_id: switch.washing_machine_smart_plug  # ← replace with your entity
+      - service: input_boolean.turn_off
+        target:
+          entity_id: input_boolean.washing_machine_pending
+      - service: !secret notify_target
+        data:
+          title: "🌊 Wasmachine gestart"
+          message: >
+            Spotprijs: {{ states('sensor.nord_pool_nl_current_price') | float(0) | round(4) }} €/kWh.
+            All-in: {{ states('sensor.energy_price_all_in') | float(0) | round(4) }} €/kWh.
+          data:
+            tag: washing_machine_started
+    mode: single
+
+  # ─────────────────────────────────────────────────────────────────────────────
+  # Dishwasher: start at cheapest overnight window
+  # ─────────────────────────────────────────────────────────────────────────────
+  - id: appliance_dishwasher_cheap_window
+    alias: "Vaatwasser: starten bij goedkoop venster"
+    description: >
+      When the AIO cheapest 4-hour overnight window opens AND dishwasher is
+      pending, turn on the smart plug.
+      DST NOTE: triggered by binary_sensor state change — DST safe.
+      Time guard: only fires between 20:00 and 08:00.
+    trigger:
+      - platform: state
+        entity_id: binary_sensor.cheapest_4h_overnight
+        to: "on"
+    condition:
+      - condition: state
+        entity_id: input_boolean.appliances_smart_scheduling
+        state: "on"
+      - condition: state
+        entity_id: input_boolean.dishwasher_pending
+        state: "on"
+      - condition: template
+        value_template: "{{ states('sensor.price_freshness_ok') == 'true' }}"
+      - condition: template
+        value_template: >
+          {# Time guard: only between 20:00 and 08:00. DST: may shift ±1h on transition days. #}
+          {% set h = now().hour %}
+          {{ h >= 20 or h < 8 }}
+      - condition: template
+        value_template: >
+          {{ states('switch.dishwasher_smart_plug') not in ['unavailable', 'unknown'] }}
+    action:
+      - service: switch.turn_on
+        target:
+          entity_id: switch.dishwasher_smart_plug  # ← replace with your entity
+      - service: input_boolean.turn_off
+        target:
+          entity_id: input_boolean.dishwasher_pending
+      - service: !secret notify_target
+        data:
+          title: "🍽️ Vaatwasser gestart"
+          message: >
+            Spotprijs: {{ states('sensor.nord_pool_nl_current_price') | float(0) | round(4) }} €/kWh.
+          data:
+            tag: dishwasher_started
+    mode: single
+
+  # ─────────────────────────────────────────────────────────────────────────────
+  # Dryer: start 2 hours after cheapest window opens (after washing machine)
+  # ─────────────────────────────────────────────────────────────────────────────
+  - id: appliance_dryer_cheap_window_delayed
+    alias: "Droger: starten 2 uur na goedkoop venster"
+    description: >
+      Starts the dryer 2 hours into the cheapest overnight window, giving the
+      washing machine time to complete a typical cycle (~2 hours) first.
+      If dryer_pending is turned off during the delay, the action is cancelled.
+      DST NOTE: 2-hour delay is relative — safe for DST.
+      Time guard: only fires between 20:00 and 08:00.
+    trigger:
+      - platform: state
+        entity_id: binary_sensor.cheapest_4h_overnight
+        to: "on"
+    condition:
+      - condition: state
+        entity_id: input_boolean.appliances_smart_scheduling
+        state: "on"
+      - condition: state
+        entity_id: input_boolean.dryer_pending
+        state: "on"
+      - condition: template
+        value_template: "{{ states('sensor.price_freshness_ok') == 'true' }}"
+      - condition: template
+        value_template: >
+          {# Time guard: only between 20:00 and 08:00. DST: may shift ±1h on transition days. #}
+          {% set h = now().hour %}
+          {{ h >= 20 or h < 8 }}
+      - condition: template
+        value_template: >
+          {{ states('switch.dryer_smart_plug') not in ['unavailable', 'unknown'] }}
+    action:
+      - delay: "02:00:00"
+      # Re-check: dryer_pending may have been turned off during delay
+      - condition: state
+        entity_id: input_boolean.dryer_pending
+        state: "on"
+      - service: switch.turn_on
+        target:
+          entity_id: switch.dryer_smart_plug  # ← replace with your entity
+      - service: input_boolean.turn_off
+        target:
+          entity_id: input_boolean.dryer_pending
+      - service: !secret notify_target
+        data:
+          title: "🌀 Droger gestart"
+          message: >
+            Droger gestart 2 uur na het goedkope venster (na wasmachine).
+            Spotprijs: {{ states('sensor.nord_pool_nl_current_price') | float(0) | round(4) }} €/kWh.
+          data:
+            tag: dryer_started
+    mode: single
+
+  # ─────────────────────────────────────────────────────────────────────────────
+  # Morning cleanup: reset all pending flags at 09:00
+  # ─────────────────────────────────────────────────────────────────────────────
+  - id: appliance_morning_cleanup
+    alias: "Apparaten: ochtend opruiming wachtende vlaggen"
+    description: >
+      Resets all appliance pending flags at 09:00. Prevents flags set the
+      previous evening from triggering during the next day's price windows.
+      DST NOTE: Fixed time trigger at 09:00. On DST transition days, may fire at
+      08:00 or 10:00 solar time — acceptable for a cleanup task.
+    trigger:
+      - platform: time
+        at: "09:00:00"
+    condition: []
+    action:
+      - service: input_boolean.turn_off
+        target:
+          entity_id:
+            - input_boolean.washing_machine_pending
+            - input_boolean.dishwasher_pending
+            - input_boolean.dryer_pending
+    mode: single
+
+  # ─────────────────────────────────────────────────────────────────────────────
+  # Evening prompt: notify at 20:30 if tomorrow has very cheap hours
+  # ─────────────────────────────────────────────────────────────────────────────
+  - id: appliance_evening_cheap_tomorrow_prompt
+    alias: "Apparaten: avondmelding bij goedkope uren morgen"
+    description: >
+      Sends an actionable notification at 20:30 if tomorrow has any hours below
+      €0.05/kWh spot price. Prompts user to schedule appliances.
+      DST NOTE: Fixed time trigger at 20:30. On DST transition days, may fire at
+      19:30 or 21:30 solar time — acceptable for an advisory notification.
+    trigger:
+      - platform: time
+        at: "20:30:00"
+    condition:
+      - condition: template
+        value_template: "{{ states('sensor.price_freshness_ok') == 'true' }}"
+      - condition: template
+        value_template: >
+          {% set prices = state_attr('sensor.nord_pool_nl_current_price', 'tomorrow') %}
+          {% if prices and prices | length > 0 %}
+            {{ prices | map('float', 0) | select('lt', 0.05) | list | count > 0 }}
+          {% else %}
+            false
+          {% endif %}
+    action:
+      - service: !secret notify_target
+        data:
+          title: "💚 Goedkope stroom morgen!"
+          message: >
+            {% set prices = state_attr('sensor.nord_pool_nl_current_price', 'tomorrow') %}
+            {% if prices %}
+              {% set cheap_hours = prices | map('float', 0) | select('lt', 0.05) | list | count %}
+              Morgen {{ cheap_hours }} uur(en) onder €0.05/kWh spotprijs.
+              Zet wasmachine, vaatwasser of droger klaar voor slim schema.
+            {% else %}
+              Morgen zijn er goedkope uren. Zet apparaten klaar voor slim schema.
+            {% endif %}
+          data:
+            tag: cheap_tomorrow_appliances
+            actions:
+              - action: "SCHEDULE_WASHING_MACHINE"
+                title: "Wasmachine inplannen"
+              - action: "SCHEDULE_DISHWASHER"
+                title: "Vaatwasser inplannen"
+    mode: single
+
+  # Handle notification tap actions
+  - id: appliance_handle_schedule_actions
+    alias: "Apparaten: verwerk meldingsacties"
+    description: "Handles actionable notification responses to schedule appliances."
+    trigger:
+      - platform: event
+        event_type: mobile_app_notification_action
+        event_data:
+          action: "SCHEDULE_WASHING_MACHINE"
+      - platform: event
+        event_type: mobile_app_notification_action
+        event_data:
+          action: "SCHEDULE_DISHWASHER"
+    action:
+      - choose:
+          - conditions:
+              - condition: template
+                value_template: >
+                  {{ trigger.event.data.action == 'SCHEDULE_WASHING_MACHINE' }}
+            sequence:
+              - service: input_boolean.turn_on
+                target:
+                  entity_id: input_boolean.washing_machine_pending
+          - conditions:
+              - condition: template
+                value_template: >
+                  {{ trigger.event.data.action == 'SCHEDULE_DISHWASHER' }}
+            sequence:
+              - service: input_boolean.turn_on
+                target:
+                  entity_id: input_boolean.dishwasher_pending
+    mode: queued
+    max: 5

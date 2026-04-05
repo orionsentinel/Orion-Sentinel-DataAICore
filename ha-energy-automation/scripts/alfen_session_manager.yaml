@@ -1,0 +1,102 @@
+---
+# alfen_session_manager.yaml
+# ──────────────────────────────────────────────────────────────────────────────
+# ⚠️ ALFEN SINGLE-SESSION LOCK ⚠️
+# The Alfen Eve allows only ONE active HTTPS API session at a time.
+# HA (leeyuentuen/alfen_wallbox) holds a persistent session.
+# Opening Eve Connect or 50five app while HA has the session BREAKS BOTH.
+#
+# Use these scripts to gracefully hand off control between HA and the app.
+# See docs/ALFEN_WARNING.md for full details.
+# ──────────────────────────────────────────────────────────────────────────────
+
+alfen_release_session:
+  alias: "Alfen: sessie vrijgeven voor app gebruik"
+  description: >
+    ⚠️ ALFEN SESSION LOCK: Call this script BEFORE opening Eve Connect or
+    50five app to avoid session conflict.
+    Logs out from the Alfen integration, releasing the API session.
+    After calling this, you can use the Eve Connect / 50five app normally.
+    Call alfen_reclaim_session when done with the app.
+  icon: mdi:ev-plug-type2-off
+  sequence:
+    - service: !secret notify_target
+      data:
+        title: "🔓 Alfen sessie vrijgegeven"
+        message: >
+          HA heeft de Alfen sessie vrijgegeven.
+          Je kunt nu Eve Connect of 50five app gebruiken.
+          Roep 'Alfen: sessie terugvorderen' aan wanneer je klaar bent.
+    - service: button.press
+      target:
+        entity_id: button.alfen_wallbox_logout
+      # If this entity doesn't exist, use the integration's Logout button
+      # via Settings → Integrations → Alfen EV Wallbox → [device] → Logout
+  mode: single
+
+alfen_reclaim_session:
+  alias: "Alfen: sessie terugvorderen van app"
+  description: >
+    ⚠️ ALFEN SESSION LOCK: Call this script AFTER you're done with Eve Connect
+    or 50five app to restore HA control of the Alfen.
+    Logs back into the Alfen integration.
+  icon: mdi:ev-plug-type2
+  sequence:
+    - service: button.press
+      target:
+        entity_id: button.alfen_wallbox_login
+      # If this entity doesn't exist, use the integration's Login button
+      # via Settings → Integrations → Alfen EV Wallbox → [device] → Login
+    - delay: "00:00:10"
+    - service: !secret notify_target
+      data:
+        title: "🔒 Alfen sessie teruggeclaimed"
+        message: >
+          HA heeft de Alfen sessie teruggeclaimed.
+          Laderbeheer via HA is hersteld.
+          Alfen status: {{ states('binary_sensor.alfen_wallbox_https_api_login_status') }}
+  mode: single
+
+alfen_force_stop_charging:
+  alias: "Alfen: EV laden direct stoppen"
+  description: >
+    ⚠️ ALFEN FLASH WEAR: Uses switch only — no current limit writes.
+    Emergency stop: immediately disables the Alfen charger.
+  icon: mdi:ev-station
+  sequence:
+    - service: switch.turn_off
+      target:
+        entity_id: switch.alfen_wallbox_availability_manager
+    - service: input_boolean.turn_off
+      target:
+        entity_id: input_boolean.ev_charge_override
+    - service: !secret notify_target
+      data:
+        title: "⛔ EV laden gestopt"
+        message: "Alfen laadpaal is uitgeschakeld via noodstopp script."
+  mode: single
+
+alfen_enable_charging_override:
+  alias: "Alfen: EV laden direct starten (overschrijving)"
+  description: >
+    ⚠️ ALFEN FLASH WEAR: Uses switch only — no current limit writes.
+    Immediately enables charging and sets override flag.
+    Override is automatically cleared when car disconnects.
+  icon: mdi:ev-station
+  sequence:
+    - service: input_boolean.turn_on
+      target:
+        entity_id: input_boolean.ev_charge_override
+    - condition: state
+      entity_id: binary_sensor.alfen_car_connected
+      state: "on"
+    - service: switch.turn_on
+      target:
+        entity_id: switch.alfen_wallbox_availability_manager
+    - service: !secret notify_target
+      data:
+        title: "✅ EV laden gestart (overschrijving)"
+        message: >
+          Alfen laadpaal is ingeschakeld via overschrijving.
+          Prijs: {{ states('sensor.energy_price_all_in') | float(0) | round(4) }} €/kWh.
+  mode: single

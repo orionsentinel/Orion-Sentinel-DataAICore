@@ -1,0 +1,522 @@
+---
+# 06_alfen_ev_charging.yaml
+# ──────────────────────────────────────────────────────────────────────────────
+# ⚠️⚠️⚠️ ALFEN EVE FLASH WEAR WARNING — READ BEFORE MODIFYING ⚠️⚠️⚠️
+#
+# The Alfen Eve wallbox stores certain configuration in EEPROM/flash memory.
+# Register 2129_0 (current limit) writes to flash on EVERY write operation.
+# EEPROM has a limited write cycle life (~100,000 cycles).
+# Continuous current-limit updates in a loop WILL physically destroy the
+# charger within months — this is NOT a theoretical risk.
+#
+# SAFE USAGE RULES FOR THIS FILE:
+#   1. Use ONLY switch.alfen_wallbox_availability_manager for on/off control.
+#   2. NEVER write to current-limit in a loop, timer, or rapidly-changing trigger.
+#   3. If current limiting is ever added: minimum 15-minute debounce between writes,
+#      AND only write when the value changes by more than 1A.
+#   4. The charger's fixed current is set once in the Alfen Eve app / SetApp.
+#      Do not override it from HA automations.
+#
+# ⚠️⚠️⚠️ ALFEN SINGLE-SESSION LOCK — READ BEFORE MODIFYING ⚠️⚠️⚠️
+#
+# The Alfen Eve allows only ONE active HTTPS API session at a time.
+# HA (via leeyuentuen/alfen_wallbox) holds the session.
+# Opening Eve Connect app or 50five app while HA has the session BREAKS BOTH.
+# The watchdog in 01_system_watchdogs.yaml will notify you to press Login in HA.
+# See docs/ALFEN_WARNING.md for full details and the session manager scripts.
+#
+# ⚠️⚠️⚠️ TESLA SOC UNRELIABILITY — READ BEFORE MODIFYING ⚠️⚠️⚠️
+#
+# Tesla API (post-2023) is cloud-dependent, can be unavailable for hours,
+# and aggressive polling keeps the car awake + drains the 12V battery.
+# RULE: Never make a charging decision based solely on Tesla SOC.
+# Use sensor.alfen_wallbox_active_power_total (charger power) as the primary
+# "is the car charging" signal. Tesla SOC is a soft hint in notifications only.
+# See docs/TESLA_SETUP.md.
+# ──────────────────────────────────────────────────────────────────────────────
+
+# ── EV charging helpers ────────────────────────────────────────────────────────
+input_number:
+  ev_target_soc:
+    name: "EV doel laadniveau"
+    min: 20
+    max: 100
+    step: 5
+    unit_of_measurement: "%"
+    icon: mdi:battery-charging-high
+    initial: 80
+    # Used only in notifications (Tesla SOC unreliable for control).
+
+  ev_minimum_soc:
+    name: "EV minimum laadniveau (noodladen)"
+    min: 10
+    max: 50
+    step: 5
+    unit_of_measurement: "%"
+    icon: mdi:battery-alert
+    initial: 20
+    # Emergency threshold — triggers charging regardless of price IF Tesla SOC available.
+    # If Tesla SOC unavailable, emergency charging does NOT trigger (safe default).
+
+input_datetime:
+  ev_departure_time:
+    name: "EV vertrekkttijd"
+    has_date: false
+    has_time: true
+    # Used for deadline charging: starts 60 min before departure if not at target.
+
+input_boolean:
+  ev_smart_charging_enabled:
+    name: "EV slim laden ingeschakeld"
+    icon: mdi:car-electric
+    initial: true
+
+  ev_charge_override:
+    name: "EV laden: overschrijving (altijd laden)"
+    icon: mdi:car-electric-outline
+    initial: false
+    # Manual override: charges regardless of price.
+    # Automatically released when charger session ends (car disconnects).
+
+# ── EV/Alfen template sensors ─────────────────────────────────────────────────
+template:
+  - binary_sensor:
+      - name: "ev_cheap_charging_now"
+        unique_id: ev_cheap_charging_now
+        icon: mdi:ev-plug-type2
+        state: >
+          {# True if: price is fresh AND (negative OR below EV threshold) #}
+          {% if states('sensor.price_freshness_ok') != 'true' %}
+            false
+          {% else %}
+            {% set price = states('sensor.nord_pool_nl_current_price') | float(999) %}
+            {% set threshold = states('input_number.ev_charge_price_threshold') | float(0.08) %}
+            {{ price < threshold or states('binary_sensor.is_negative_price') == 'on' }}
+          {% endif %}
+
+      - name: "alfen_car_connected"
+        unique_id: alfen_car_connected
+        device_class: plug
+        icon: mdi:ev-plug-type2
+        # Alfen status 'A' = no vehicle (IEC 61851 state A).
+        # Any other status = vehicle connected.
+        # Falls back to false if entity is unavailable.
+        state: >
+          {% set status = states('sensor.alfen_wallbox_status') %}
+          {% if status in ['unavailable', 'unknown', 'none'] %}
+            false
+          {% else %}
+            {{ status != 'A' }}
+          {% endif %}
+
+      - name: "ev_actually_charging"
+        unique_id: ev_actually_charging
+        device_class: battery_charging
+        icon: mdi:battery-charging
+        # PRIMARY "is EV charging" signal — uses CHARGER power, NOT Tesla SOC.
+        # Tesla SOC is unreliable (cloud API, can be unavailable for hours).
+        # 200W threshold handles standby/measurement noise.
+        state: >
+          {{ states('sensor.alfen_wallbox_active_power_total') | float(0) > 200 }}
+
+      - name: "ev_needs_emergency_charge"
+        unique_id: ev_needs_emergency_charge
+        icon: mdi:battery-alert
+        # Emergency charge only triggers if Tesla SOC is actually available.
+        # NEVER make a safety decision based on unavailable SOC data.
+        state: >
+          {% set soc = states('sensor.tesla_battery_level') %}
+          {% if soc in ['unavailable', 'unknown', 'none'] %}
+            false
+          {% else %}
+            {% set soc_val = soc | float(100) %}
+            {% set min_soc = states('input_number.ev_minimum_soc') | float(20) %}
+            {{ soc_val < min_soc }}
+          {% endif %}
+
+  - sensor:
+      - name: "tesla_soc_if_available"
+        unique_id: tesla_soc_if_available
+        unit_of_measurement: "%"
+        device_class: battery
+        icon: mdi:car-electric
+        # Tesla SOC — informational only, wrapped in availability check.
+        # DO NOT use this in safety-critical automation conditions.
+        state: >
+          {% set soc = states('sensor.tesla_battery_level') %}
+          {% if soc in ['unavailable', 'unknown', 'none'] %}
+            unknown
+          {% else %}
+            {{ soc | float(0) | round(0) }}
+          {% endif %}
+        attributes:
+          source: "Tesla API (cloud — may be unavailable for hours)"
+          reliable_for_control: false
+          note: "Use alfen_wallbox_active_power_total for charging state"
+
+# ── EV charging automations ────────────────────────────────────────────────────
+automation:
+  # ─────────────────────────────────────────────────────────────────────────────
+  # 1. Start charging when cheap window opens
+  # ⚠️ Uses switch only — NO current limit writes (flash wear protection)
+  # ─────────────────────────────────────────────────────────────────────────────
+  - id: ev_start_charging_cheap_window
+    alias: "EV: laden starten bij goedkoop uur"
+    description: >
+      ⚠️ ALFEN FLASH WEAR: uses switch.alfen_wallbox_availability_manager only.
+      Does NOT write current limits. See file header for flash wear warning.
+      Triggers when cheap window opens OR AIO cheapest window activates.
+      DST NOTE: Triggered by binary_sensor state change, not fixed time — DST safe.
+    trigger:
+      - platform: state
+        entity_id: binary_sensor.ev_cheap_charging_now
+        to: "on"
+      - platform: state
+        entity_id: binary_sensor.cheapest_6h_any
+        to: "on"
+    condition:
+      - condition: state
+        entity_id: input_boolean.ev_smart_charging_enabled
+        state: "on"
+      - condition: state
+        entity_id: binary_sensor.alfen_car_connected
+        state: "on"
+      - condition: template
+        value_template: "{{ states('sensor.price_freshness_ok') == 'true' }}"
+      - condition: template
+        value_template: >
+          {{ states('switch.alfen_wallbox_availability_manager') not in ['unavailable', 'unknown'] }}
+    action:
+      - service: switch.turn_on
+        target:
+          entity_id: switch.alfen_wallbox_availability_manager
+      - service: !secret notify_target
+        data:
+          title: "🔌 EV laden gestart — goedkoop uur"
+          message: >
+            Spotprijs: {{ states('sensor.nord_pool_nl_current_price') | float(0) | round(4) }} €/kWh.
+            {% set soc = states('sensor.tesla_soc_if_available') %}
+            {% if soc != 'unknown' %}
+              Tesla SoC: {{ soc }}% (doel: {{ states('input_number.ev_target_soc') | round(0) }}%)
+            {% else %}
+              Tesla SoC: niet beschikbaar (Tesla API offline)
+            {% endif %}
+          data:
+            tag: ev_charging_start
+    mode: single
+
+  # ─────────────────────────────────────────────────────────────────────────────
+  # 2. Stop charging when cheap window closes (respect override and emergency)
+  # ─────────────────────────────────────────────────────────────────────────────
+  - id: ev_stop_charging_expensive_hour
+    alias: "EV: laden stoppen bij hoge prijs"
+    description: >
+      ⚠️ ALFEN FLASH WEAR: uses switch only.
+      Stops charging when cheap windows close. Respects override and emergency flags.
+      If price data is stale → NO-OP (do not stop charging on bad data).
+    trigger:
+      - platform: state
+        entity_id: binary_sensor.ev_cheap_charging_now
+        to: "off"
+      - platform: state
+        entity_id: binary_sensor.cheapest_6h_any
+        to: "off"
+    condition:
+      - condition: state
+        entity_id: input_boolean.ev_smart_charging_enabled
+        state: "on"
+      - condition: state
+        entity_id: input_boolean.ev_charge_override
+        state: "off"
+      - condition: state
+        entity_id: binary_sensor.ev_needs_emergency_charge
+        state: "off"
+      - condition: template
+        value_template: "{{ states('sensor.price_freshness_ok') == 'true' }}"
+      - condition: template
+        value_template: >
+          {{ states('switch.alfen_wallbox_availability_manager') not in ['unavailable', 'unknown'] }}
+      # Do not stop if departure deadline is imminent
+      - condition: template
+        value_template: >
+          {% set dep = states('input_datetime.ev_departure_time') %}
+          {% if dep in ['unavailable', 'unknown', 'none'] %}
+            true
+          {% else %}
+            {% set dep_dt = today_at(dep) %}
+            {% set minutes_until = ((dep_dt - now()) / timedelta(minutes=1)) %}
+            {{ minutes_until > 90 or minutes_until < 0 }}
+          {% endif %}
+    action:
+      - service: switch.turn_off
+        target:
+          entity_id: switch.alfen_wallbox_availability_manager
+    mode: single
+
+  # ─────────────────────────────────────────────────────────────────────────────
+  # 3. Charge override: turn on charger immediately
+  # ─────────────────────────────────────────────────────────────────────────────
+  - id: ev_start_charging_override
+    alias: "EV: laden starten bij handmatige overschrijving"
+    description: >
+      ⚠️ ALFEN FLASH WEAR: uses switch only.
+      Starts charging immediately when ev_charge_override is turned on.
+    trigger:
+      - platform: state
+        entity_id: input_boolean.ev_charge_override
+        to: "on"
+    condition:
+      - condition: state
+        entity_id: binary_sensor.alfen_car_connected
+        state: "on"
+      - condition: template
+        value_template: >
+          {{ states('switch.alfen_wallbox_availability_manager') not in ['unavailable', 'unknown'] }}
+    action:
+      - service: switch.turn_on
+        target:
+          entity_id: switch.alfen_wallbox_availability_manager
+    mode: single
+
+  # ─────────────────────────────────────────────────────────────────────────────
+  # 4. Emergency charge when Tesla SOC is below minimum (if SOC available)
+  # ─────────────────────────────────────────────────────────────────────────────
+  - id: ev_start_emergency_charge
+    alias: "EV: noodladen starten bij lage Tesla SoC"
+    description: >
+      ⚠️ ALFEN FLASH WEAR: uses switch only.
+      ⚠️ TESLA SOC: Only fires if Tesla SOC is actually available and below minimum.
+      If Tesla SOC is unavailable, this automation does NOT trigger.
+      Emergency charge runs regardless of price.
+    trigger:
+      - platform: state
+        entity_id: binary_sensor.ev_needs_emergency_charge
+        to: "on"
+        for: "00:05:00"
+    condition:
+      - condition: state
+        entity_id: binary_sensor.alfen_car_connected
+        state: "on"
+      - condition: template
+        value_template: >
+          {{ states('sensor.tesla_battery_level') not in ['unavailable', 'unknown', 'none'] }}
+      - condition: template
+        value_template: >
+          {{ states('switch.alfen_wallbox_availability_manager') not in ['unavailable', 'unknown'] }}
+    action:
+      - service: switch.turn_on
+        target:
+          entity_id: switch.alfen_wallbox_availability_manager
+      - service: !secret notify_target
+        data:
+          title: "⚡ EV noodladen gestart!"
+          message: >
+            Tesla SoC: {{ states('sensor.tesla_battery_level') }}% is onder het minimum
+            ({{ states('input_number.ev_minimum_soc') | round(0) }}%).
+            Laden gestart ongeacht prijs ({{ states('sensor.energy_price_all_in') | float(0) | round(4) }} €/kWh).
+          data:
+            tag: ev_emergency_charge
+            importance: high
+    mode: single
+
+  # ─────────────────────────────────────────────────────────────────────────────
+  # 5. Deadline charge: 60 minutes before departure if not at target
+  # ─────────────────────────────────────────────────────────────────────────────
+  - id: ev_deadline_charge_before_departure
+    alias: "EV: noodladen voor vertrek"
+    description: >
+      ⚠️ ALFEN FLASH WEAR: uses switch only.
+      ⚠️ TESLA SOC: notifies with SOC if available, but departure deadline charge
+      activates regardless of SOC availability (safety behavior).
+      Fires when departure is 60 minutes away. Turns on override.
+      DST NOTE: time_pattern is checked manually inside condition to avoid DST issues.
+    trigger:
+      - platform: time_pattern
+        minutes: "0"
+        # Fires every hour at :00 — condition checks departure proximity.
+        # DST NOTE: may fire at wrong time on DST transition — acceptable for deadline.
+    condition:
+      - condition: state
+        entity_id: binary_sensor.alfen_car_connected
+        state: "on"
+      - condition: template
+        value_template: >
+          {% set dep = states('input_datetime.ev_departure_time') %}
+          {% if dep in ['unavailable', 'unknown', 'none'] %}
+            false
+          {% else %}
+            {% set dep_dt = today_at(dep) %}
+            {% set minutes_until = ((dep_dt - now()) / timedelta(minutes=1)) %}
+            {{ 50 < minutes_until <= 70 }}
+          {% endif %}
+      - condition: template
+        value_template: >
+          {# Check if Tesla SOC is below target — use 'false' (don't charge) if unavailable #}
+          {% set soc = states('sensor.tesla_battery_level') %}
+          {% if soc in ['unavailable', 'unknown', 'none'] %}
+            true
+          {% else %}
+            {{ soc | float(100) < states('input_number.ev_target_soc') | float(80) }}
+          {% endif %}
+      - condition: state
+        entity_id: input_boolean.ev_smart_charging_enabled
+        state: "on"
+    action:
+      - service: input_boolean.turn_on
+        target:
+          entity_id: input_boolean.ev_charge_override
+      - service: !secret notify_target
+        data:
+          title: "⏰ EV laden voor vertrek gestart"
+          message: >
+            Minder dan 1 uur tot vertrek ({{ states('input_datetime.ev_departure_time') }}).
+            {% set soc = states('sensor.tesla_soc_if_available') %}
+            {% if soc != 'unknown' %}
+              Tesla SoC: {{ soc }}% → doel: {{ states('input_number.ev_target_soc') | round(0) }}%
+            {% else %}
+              Tesla SoC: niet beschikbaar — laden toch gestart.
+            {% endif %}
+          data:
+            tag: ev_deadline_charge
+    mode: single
+
+  # ─────────────────────────────────────────────────────────────────────────────
+  # 6. Solar excess absorption (10-minute debounce — flash wear protection)
+  # ─────────────────────────────────────────────────────────────────────────────
+  - id: ev_start_solar_excess_absorption
+    alias: "EV: laden met zonne-energie overschot"
+    description: >
+      ⚠️ ALFEN FLASH WEAR: uses switch only — NO current adjustments.
+      The charger runs at its configured fixed current (set in Alfen app/SetApp).
+      Dynamic current adjustment is NOT implemented to protect flash memory.
+      Debounce: 10 minutes (longer than typical battery automations) for stability.
+      Triggers when grid export exceeds 1500W for 10 consecutive minutes.
+    trigger:
+      - platform: numeric_state
+        entity_id: sensor.grid_export_w
+        above: 1500
+        for: "00:10:00"
+    condition:
+      - condition: state
+        entity_id: input_boolean.ev_smart_charging_enabled
+        state: "on"
+      - condition: state
+        entity_id: binary_sensor.alfen_car_connected
+        state: "on"
+      - condition: state
+        entity_id: binary_sensor.ev_actually_charging
+        state: "off"
+      - condition: template
+        value_template: >
+          {{ states('switch.alfen_wallbox_availability_manager') not in ['unavailable', 'unknown'] }}
+    action:
+      - service: switch.turn_on
+        target:
+          entity_id: switch.alfen_wallbox_availability_manager
+      - service: !secret notify_target
+        data:
+          title: "☀️ EV laden met zonne-overschot"
+          message: >
+            Netexport: {{ states('sensor.grid_export_w') | round(0) }} W.
+            EV laden gestart met vast vermogen (configuratie in Alfen app).
+          data:
+            tag: ev_solar_excess
+    mode: single
+
+  - id: ev_stop_solar_excess_absorption
+    alias: "EV: stoppen na zonne-energie overschot"
+    description: >
+      ⚠️ ALFEN FLASH WEAR: uses switch only.
+      Stops solar-excess charging when export drops below 800W for 10 minutes.
+      Does NOT stop if override or emergency charge is active.
+    trigger:
+      - platform: numeric_state
+        entity_id: sensor.grid_export_w
+        below: 800
+        for: "00:10:00"
+    condition:
+      - condition: state
+        entity_id: input_boolean.ev_smart_charging_enabled
+        state: "on"
+      - condition: state
+        entity_id: binary_sensor.ev_cheap_charging_now
+        state: "off"
+      - condition: state
+        entity_id: input_boolean.ev_charge_override
+        state: "off"
+      - condition: state
+        entity_id: binary_sensor.ev_needs_emergency_charge
+        state: "off"
+      - condition: template
+        value_template: >
+          {{ states('switch.alfen_wallbox_availability_manager') not in ['unavailable', 'unknown'] }}
+    action:
+      - service: switch.turn_off
+        target:
+          entity_id: switch.alfen_wallbox_availability_manager
+    mode: single
+
+  # ─────────────────────────────────────────────────────────────────────────────
+  # 7. Release override when car disconnects (Alfen session ends)
+  # ─────────────────────────────────────────────────────────────────────────────
+  - id: ev_release_override_on_disconnect
+    alias: "EV: overschrijving vrijgeven bij ontkoppeling"
+    description: >
+      When the Alfen reports the car has disconnected (status A = no vehicle),
+      automatically turn off the override. Prevents override from carrying over
+      to the next charging session.
+    trigger:
+      - platform: state
+        entity_id: binary_sensor.alfen_car_connected
+        to: "off"
+        for: "00:02:00"
+    condition:
+      - condition: state
+        entity_id: input_boolean.ev_charge_override
+        state: "on"
+    action:
+      - service: input_boolean.turn_off
+        target:
+          entity_id: input_boolean.ev_charge_override
+    mode: single
+
+  # ─────────────────────────────────────────────────────────────────────────────
+  # 8. Evening notification if car not connected at 22:00
+  # ─────────────────────────────────────────────────────────────────────────────
+  - id: ev_evening_reminder_not_connected
+    alias: "EV: avondherinnering niet ingestopt"
+    description: >
+      Sends a notification at 22:00 if the car is not connected to the Alfen.
+      The cheapest overnight window typically starts around 22:00-02:00.
+      DST NOTE: Fixed time trigger at 22:00. On DST transition days, may fire
+      1 hour early/late — acceptable for a non-critical notification.
+    trigger:
+      - platform: time
+        at: "22:00:00"
+    condition:
+      - condition: state
+        entity_id: binary_sensor.alfen_car_connected
+        state: "off"
+      - condition: state
+        entity_id: input_boolean.ev_smart_charging_enabled
+        state: "on"
+    action:
+      - service: !secret notify_target
+        data:
+          title: "🔌 Auto niet ingestopt"
+          message: >
+            De auto is niet aangesloten op de laadpaal.
+            Het goedkope nachttarief venster begint binnenkort.
+            {% set soc = states('sensor.tesla_soc_if_available') %}
+            {% if soc != 'unknown' %}
+              Huidige Tesla SoC: {{ soc }}%
+            {% else %}
+              Tesla SoC: niet beschikbaar
+            {% endif %}
+          data:
+            tag: ev_not_connected
+            actions:
+              - action: "URI"
+                title: "Open energie dashboard"
+                uri: "/lovelace/energy"
+    mode: single
