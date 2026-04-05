@@ -80,7 +80,7 @@ Logbook → "Charge from Grid" written to SolarEdge
 ```
 Automation Traces → battery_grid_charge_target_reached → Success
 input_select.battery_desired_mode = HOLD
-sensor.solaredge_b1_soc ≈ 80%
+sensor.solaredge_b1_state_of_energy ≈ 80%
 ```
 
 ---

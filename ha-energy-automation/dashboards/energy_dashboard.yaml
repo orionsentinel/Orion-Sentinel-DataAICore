@@ -106,14 +106,14 @@ views:
               - type: template
                 icon: mdi:battery
                 icon_color: >
-                  {% set soc = states('sensor.solaredge_b1_soc') | float(0) %}
+                  {% set soc = states('sensor.solaredge_b1_state_of_energy') | float(0) %}
                   {% if soc > 60 %}green{% elif soc > 30 %}yellow{% else %}red{% endif %}
                 content: >
-                  {{ states('sensor.solaredge_b1_soc') | float(0) | round(0) }}%
+                  {{ states('sensor.solaredge_b1_state_of_energy') | float(0) | round(0) }}%
                   (doel: {{ states('sensor.battery_target_soc') | default('?') }}%)
                 tap_action:
                   action: more-info
-                  entity: sensor.solaredge_b1_soc
+                  entity: sensor.solaredge_b1_state_of_energy
 
               # Arbitrage kans
               - type: template
@@ -201,22 +201,22 @@ views:
           - type: custom:mushroom-template-card
             primary: "Batterij"
             secondary: >
-              SoC: {{ states('sensor.solaredge_b1_soc') | float(0) | round(0) }}%
+              SoC: {{ states('sensor.solaredge_b1_state_of_energy') | float(0) | round(0) }}%
               {% set power = states('sensor.solaredge_b1_dc_power') | float(0) | round(0) %}
               {% if power > 50 %} (laden +{{ power }}W)
               {% elif power < -50 %} (ontladen {{ power }}W){% endif %}
             icon: >
-              {% set soc = states('sensor.solaredge_b1_soc') | float(0) %}
+              {% set soc = states('sensor.solaredge_b1_state_of_energy') | float(0) %}
               {% if soc > 80 %}mdi:battery-high
               {% elif soc > 50 %}mdi:battery-medium
               {% elif soc > 20 %}mdi:battery-low
               {% else %}mdi:battery-alert{% endif %}
             icon_color: >
-              {% set soc = states('sensor.solaredge_b1_soc') | float(0) %}
+              {% set soc = states('sensor.solaredge_b1_state_of_energy') | float(0) %}
               {% if soc > 60 %}green{% elif soc > 30 %}yellow{% else %}red{% endif %}
             tap_action:
               action: more-info
-              entity: sensor.solaredge_b1_soc
+              entity: sensor.solaredge_b1_state_of_energy
 
       # ═════════════════════════════════════════════════════════════════════════
       # SECTION 4 — Prijs grafiek

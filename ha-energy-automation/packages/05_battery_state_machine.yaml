@@ -63,7 +63,7 @@ template:
         icon: mdi:information-outline
         state: >
           {% set mode = states('input_select.battery_desired_mode') %}
-          {% set soc = states('sensor.solaredge_b1_soc') | float(0) | round(0) %}
+          {% set soc = states('sensor.solaredge_b1_state_of_energy') | float(0) | round(0) %}
           {% set price = states('sensor.nord_pool_nl_current_price') | float(0) | round(4) %}
           {% set spread = states('sensor.price_spread_today') | float(0) | round(3) %}
           {% set last = states('input_text.battery_last_action') %}

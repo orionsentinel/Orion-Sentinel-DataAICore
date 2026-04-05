@@ -45,7 +45,7 @@ template:
         unique_id: battery_hardware_available
         device_class: connectivity
         state: >
-          {{ states('sensor.solaredge_b1_soc') not in ['unavailable', 'unknown']
+          {{ states('sensor.solaredge_b1_state_of_energy') not in ['unavailable', 'unknown']
              and states('sensor.solaredge_b1_dc_power') not in ['unavailable', 'unknown'] }}
         # True when the SolarEdge Home Battery hardware is installed and Modbus responds.
         # Will be false until the battery is physically installed.
@@ -84,11 +84,13 @@ utility_meter:
     name: "Maandelijks netexport"
 
   daily_ev_charged:
-    source: sensor.alfen_wallbox_energy_session_kwh
+    source: sensor.alfen_wallbox_energy_total_kwh
     cycle: daily
     name: "Dagelijks EV geladen"
+    # Must use total (monotonically increasing) — NOT session_kwh which resets per session.
+    # Utility meter would report negative values on session reset if session_kwh were used.
 
   monthly_ev_charged:
-    source: sensor.alfen_wallbox_energy_session_kwh
+    source: sensor.alfen_wallbox_energy_total_kwh
     cycle: monthly
     name: "Maandelijks EV geladen"

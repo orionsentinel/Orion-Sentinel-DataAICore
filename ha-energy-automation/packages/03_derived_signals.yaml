@@ -73,9 +73,9 @@ template:
         state_class: measurement
         icon: mdi:battery
         state: >
-          {{ states('sensor.solaredge_b1_soc') | float(0) | round(1) }}
+          {{ states('sensor.solaredge_b1_state_of_energy') | float(0) | round(1) }}
         availability: >
-          {{ states('sensor.solaredge_b1_soc') not in ['unavailable', 'unknown'] }}
+          {{ states('sensor.solaredge_b1_state_of_energy') not in ['unavailable', 'unknown'] }}
 
       - name: "battery_energy_available_kwh"
         unique_id: battery_energy_available_kwh
@@ -85,32 +85,32 @@ template:
         icon: mdi:battery-medium
         # Available energy above minimum SOC. Usable capacity = 9.7 kWh.
         state: >
-          {% set soc = states('sensor.solaredge_b1_soc') | float(0) %}
+          {% set soc = states('sensor.solaredge_b1_state_of_energy') | float(0) %}
           {% set min_soc = states('input_number.battery_min_soc') | float(20) %}
           {% set capacity_kwh = 9.7 %}
           {% set usable_pct = [soc - min_soc, 0] | max %}
           {{ (usable_pct / 100 * capacity_kwh) | round(2) }}
         availability: >
-          {{ states('sensor.solaredge_b1_soc') not in ['unavailable', 'unknown'] }}
+          {{ states('sensor.solaredge_b1_state_of_energy') not in ['unavailable', 'unknown'] }}
 
   - binary_sensor:
       - name: "battery_low"
         unique_id: battery_low
         device_class: battery
         state: >
-          {% set soc = states('sensor.solaredge_b1_soc') | float(100) %}
+          {% set soc = states('sensor.solaredge_b1_state_of_energy') | float(100) %}
           {% set min_soc = states('input_number.battery_min_soc') | float(20) %}
           {{ soc <= min_soc }}
         availability: >
-          {{ states('sensor.solaredge_b1_soc') not in ['unavailable', 'unknown'] }}
+          {{ states('sensor.solaredge_b1_state_of_energy') not in ['unavailable', 'unknown'] }}
 
       - name: "battery_nearly_full"
         unique_id: battery_nearly_full
         icon: mdi:battery-high
         state: >
-          {{ states('sensor.solaredge_b1_soc') | float(0) >= 90 }}
+          {{ states('sensor.solaredge_b1_state_of_energy') | float(0) >= 90 }}
         availability: >
-          {{ states('sensor.solaredge_b1_soc') not in ['unavailable', 'unknown'] }}
+          {{ states('sensor.solaredge_b1_state_of_energy') not in ['unavailable', 'unknown'] }}
 
       - name: "solar_producing"
         unique_id: solar_producing

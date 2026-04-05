@@ -133,7 +133,7 @@ sensor.solaredge_i1_ac_power (SolarEdge Modbus Multi)
   └── binary_sensor.modbus_available
   └── binary_sensor.solar_producing
 
-sensor.solaredge_b1_soc (SolarEdge Modbus Multi)
+sensor.solaredge_b1_state_of_energy (SolarEdge Modbus Multi)
   └── binary_sensor.battery_low
   └── sensor.battery_energy_available_kwh
   └── sensor.battery_target_soc
