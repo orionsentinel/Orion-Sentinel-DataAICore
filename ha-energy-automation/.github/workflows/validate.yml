@@ -53,10 +53,8 @@ jobs:
             # grep for long alphanum strings on non-comment lines and not 'YOUR_' placeholders
             if grep -Pn '^[^#]*[A-Za-z0-9]{32,}' "$file" | \
                grep -v 'YOUR_' | \
-               grep -v '#' | \
                grep -v 'description:' | \
-               grep -v '^\s*#' | \
-               grep -qP '[A-Za-z0-9]{32,}'; then
+               grep -qv '^\s*#'; then
               echo "⚠️  Potential API key found in: $file"
               grep -Pn '^[^#]*[A-Za-z0-9]{32,}' "$file" | \
                 grep -v 'YOUR_' | grep -v '^\s*#' | head -5
