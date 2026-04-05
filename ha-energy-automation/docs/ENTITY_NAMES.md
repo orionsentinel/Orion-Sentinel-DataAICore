@@ -1,233 +1,207 @@
 # Entity Names Reference
 
-This document provides entity name mappings for all integrations used in this package.
+## Discovery: Find Your Entities
 
----
-
-## SolarEdge Modbus Multi Entity Names
-
-The SolarEdge Modbus Multi integration uses a naming convention based on device ID:
-- `i1` = Inverter 1
-- `m1` = Meter 1 (production meter, wired to inverter)
-- `b1` = Battery 1 (after battery install)
-
-### Inverter Entities (i1)
-
-| Entity | Description | Unit |
-|---|---|---|
-| `sensor.solaredge_i1_ac_power` | AC output power | W |
-| `sensor.solaredge_i1_dc_power` | DC input power (from panels) | W |
-| `sensor.solaredge_i1_ac_energy_kwh` | Total AC energy produced | kWh |
-| `sensor.solaredge_i1_status` | Inverter status (0-7) | — |
-| `sensor.solaredge_i1_temperature` | Inverter temperature | °C |
-| `sensor.solaredge_i1_ac_voltage_ab` | AC voltage L1-L2 | V |
-| `sensor.solaredge_i1_ac_frequency` | Grid frequency | Hz |
-| `select.solaredge_i1_storage_control_mode` | Battery control mode | — |
-| `select.solaredge_i1_storage_default_mode` | Battery default mode | — |
-
-### Meter Entities (m1)
-
-| Entity | Description | Unit |
-|---|---|---|
-| `sensor.solaredge_m1_ac_power` | Grid exchange power (+ import, − export) | W |
-| `sensor.solaredge_m1_imported_kwh` | Total energy imported from grid | kWh |
-| `sensor.solaredge_m1_exported_kwh` | Total energy exported to grid | kWh |
-| `sensor.solaredge_m1_ac_voltage_ln` | Grid voltage L-N | V |
-
-### Battery Entities (b1) — Available After Battery Install
-
-| Entity | Description | Unit |
-|---|---|---|
-| `sensor.solaredge_b1_state_of_energy` | Battery state of charge | % |
-| `sensor.solaredge_b1_dc_power` | Battery power (+ charge, − discharge) | W |
-| `sensor.solaredge_b1_status` | Battery status (1-7) | — |
-| `sensor.solaredge_b1_energy_charged` | Total energy charged | kWh |
-| `sensor.solaredge_b1_energy_discharged` | Total energy discharged | kWh |
-| `sensor.solaredge_b1_temperature` | Battery temperature | °C |
-
-### Battery Status Values
-
-| Value | Meaning |
-|---|---|
-| 1 | Off |
-| 2 | Empty |
-| 3 | Discharging |
-| 4 | Charging |
-| 5 | Full |
-| 6 | Holding |
-| 7 | Testing |
-
----
-
-## Find Your Entities — Jinja2 Template
-
-Run this in **Developer Tools → Template** to discover all your SolarEdge and energy entities:
+Run this template in **Developer Tools → Template** to discover all relevant entities:
 
 ```jinja2
-{# Discover all SolarEdge and energy-related entities #}
-{% set keywords = ['solaredge', 'p1', 'nord_pool', 'ev_charger', 'easee', 'go_e', 'zaptec', 'alfen', 'forecast_solar', 'solcast'] %}
+{# Energy system entity discovery — paste into Developer Tools → Template #}
+{% set keywords = ['solaredge', 'p1_meter', 'homewizard', 'nord_pool', 'alfen', 'wallbox', 'tesla', 'forecast_solar', 'solcast', 'battery'] %}
 {% for state in states | sort(attribute='entity_id') %}
+  {% set found = namespace(v=false) %}
   {% for kw in keywords %}
-    {% if kw in state.entity_id and state.entity_id not in discovered %}
-      {{ state.entity_id }} — {{ state.state }} {{ state.attributes.unit_of_measurement | default('') }}
+    {% if kw in state.entity_id %}
+      {% set found.v = true %}
     {% endif %}
   {% endfor %}
+  {% if found.v %}
+{{ state.entity_id }}: {{ state.state }} {{ state.attributes.unit_of_measurement | default('') }}
+  {% endif %}
 {% endfor %}
 ```
 
 To find your notification services:
-
 ```jinja2
-{% for state in states.notify | sort(attribute='entity_id') %}
-  {{ state.entity_id }}
+{% for s in states | sort(attribute='entity_id') %}
+  {% if 'notify' in s.entity_id %}{{ s.entity_id }}
+  {% endif %}
 {% endfor %}
 ```
 
 ---
 
-## Bulk Rename (if your entity names differ)
+## SolarEdge Modbus Multi Entities
 
-If your SolarEdge entities use a different naming convention (e.g., device name in the entity ID), use these commands to find and replace:
+### Inverter (i1 = Inverter 1)
 
-### Bash (Linux/Mac)
+| Entity | Description | Unit | Used in |
+|---|---|---|---|
+| `sensor.solaredge_i1_ac_power` | AC output power | W | 03_solaredge |
+| `sensor.solaredge_i1_dc_power` | DC input power (from panels) | W | 03_solaredge |
+| `sensor.solaredge_i1_ac_energy_kwh` | Total AC energy | kWh | 03_solaredge (utility meter) |
+| `sensor.solaredge_i1_status` | Inverter status | — | — |
+| `sensor.solaredge_i1_temperature` | Inverter temperature | °C | — |
+| `select.solaredge_i1_storage_control_mode` | Battery control mode | — | 04_battery_state_machine |
+| `select.solaredge_i1_storage_default_mode` | Battery default mode | — | 04_battery_state_machine |
 
-```bash
-# Find all package files and show matching entity references
-grep -r "solaredge_i1\|solaredge_m1\|solaredge_b1" packages/
+### Meter (m1 = Grid Meter)
 
-# Bulk rename device suffix (example: replace 'i1' with 'se10000h')
-find packages/ -name "*.yaml" -exec sed -i 's/solaredge_i1_/solaredge_se10000h_/g' {} \;
-find packages/ -name "*.yaml" -exec sed -i 's/solaredge_m1_/solaredge_se10000h_meter_/g' {} \;
-```
+| Entity | Description | Unit | Used in |
+|---|---|---|---|
+| `sensor.solaredge_m1_ac_power` | Grid power (+ import, − export) | W | 03_solaredge |
+| `sensor.solaredge_m1_imported_kwh` | Total grid import | kWh | 03_solaredge (utility meter) |
+| `sensor.solaredge_m1_exported_kwh` | Total grid export | kWh | 03_solaredge (utility meter) |
 
-### PowerShell (Windows)
+### Battery (b1 = Battery 1) — After Install Only
 
-```powershell
-# Find all package files and show matching entity references
-Get-ChildItem -Path packages -Filter *.yaml -Recurse | Select-String "solaredge_i1|solaredge_m1|solaredge_b1"
+| Entity | Description | Unit | Used in |
+|---|---|---|---|
+| `sensor.solaredge_b1_state_of_energy` | Battery SOC | % | 03_solaredge |
+| `sensor.solaredge_b1_dc_power` | Battery power (+ charge, − discharge) | W | 03_solaredge |
+| `sensor.solaredge_b1_status` | Status code (1-7) | — | 03_solaredge |
+| `sensor.solaredge_b1_energy_charged` | Total charged | kWh | 03_solaredge (utility meter) |
+| `sensor.solaredge_b1_energy_discharged` | Total discharged | kWh | 03_solaredge (utility meter) |
 
-# Bulk rename device suffix (example: replace 'i1' with 'se10000h')
-Get-ChildItem -Path packages -Filter *.yaml -Recurse | ForEach-Object {
-    (Get-Content $_.FullName) -replace 'solaredge_i1_', 'solaredge_se10000h_' |
-    Set-Content $_.FullName
-}
-```
+**Battery status codes:** 1=Off, 2=Empty, 3=Discharging, 4=Charging, 5=Full, 6=Holding, 7=Testing
 
 ---
 
 ## HomeWizard P1 Meter Entities
 
-Entity names depend on your device name in HA. Default with device named "P1 meter":
+Device name varies by what you named it in HA. Default assumes "P1 Meter":
 
 | Entity | Description | Unit |
 |---|---|---|
-| `sensor.p1_meter_power_import_t1` | Active import T1 power | kW |
-| `sensor.p1_meter_power_import_t2` | Active import T2 power | kW |
-| `sensor.p1_meter_power_export_t1` | Active export T1 power | kW |
-| `sensor.p1_meter_power_export_t2` | Active export T2 power | kW |
-| `sensor.p1_meter_energy_import_tariff_1` | Total import T1 | kWh |
-| `sensor.p1_meter_energy_import_tariff_2` | Total import T2 | kWh |
-| `sensor.p1_meter_energy_export_tariff_1` | Total export T1 | kWh |
-| `sensor.p1_meter_energy_export_tariff_2` | Total export T2 | kWh |
-| `sensor.p1_meter_active_power_l1_w` | Phase L1 power | W |
-| `sensor.p1_meter_active_power_l2_w` | Phase L2 power | W |
-| `sensor.p1_meter_active_power_l3_w` | Phase L3 power | W |
-| `sensor.p1_meter_active_voltage_l1_v` | Phase L1 voltage | V |
-| `sensor.p1_meter_active_current_l1_a` | Phase L1 current | A |
-| `sensor.p1_meter_gas` | Gas usage | m³ |
+| `sensor.p1_meter_active_power_import_l1_w` | Phase L1 import | W |
+| `sensor.p1_meter_active_power_import_l2_w` | Phase L2 import | W |
+| `sensor.p1_meter_active_power_import_l3_w` | Phase L3 import | W |
+| `sensor.p1_meter_active_power_export_l1_w` | Phase L1 export | W |
+| `sensor.p1_meter_total_power_import_kwh` | Total import | kWh |
+| `sensor.p1_meter_total_power_export_kwh` | Total export | kWh |
+| `sensor.p1_meter_total_gas_m3` | Gas usage | m³ |
+| `sensor.p1_meter_active_tariff` | Current tariff (T1/T2) | — |
 
-> **Three-phase note:** The SolarEdge SE10000H is a single-phase inverter connected to L1. Grid total = L1 + L2 + L3 from the P1 meter.
+> The SE10000H connects to phase L1. Total house consumption = L1 + L2 + L3 from P1 meter.
 
 ---
 
-## EV Charger Entity Mappings
+## Alfen Eve Wallbox Entities
 
-### Easee (official HA integration)
+| Entity | Description | Notes |
+|---|---|---|
+| `switch.alfen_wallbox_availability_manager` | Enable/disable charging | ✅ Safe for frequent writes |
+| `sensor.alfen_wallbox_active_power_total` | Total charging power | W, primary EV signal |
+| `sensor.alfen_wallbox_status` | IEC 61851 state | A=no car, B=connected, C=charging |
+| `binary_sensor.alfen_wallbox_https_api_login_status` | API session active | Session watchdog |
+| `sensor.alfen_wallbox_voltage_l1_n` | Phase L1 voltage | V |
+| `sensor.alfen_wallbox_current_l1` | Phase L1 current | A |
+| `number.alfen_wallbox_max_station_current` | Max charging current | ⚠️ FLASH WEAR — use carefully |
+| `button.alfen_wallbox_login` | Re-login to API | Session recovery |
+| `button.alfen_wallbox_logout` | Logout from API | Release session for app |
 
-| Entity | Description |
-|---|---|
-| `switch.easee_[name]_smart_charging` | Enable smart charging |
-| `sensor.easee_[name]_status` | Charger status |
-| `sensor.easee_[name]_power` | Current charging power (kW) |
-| `sensor.easee_[name]_session_energy` | Energy delivered this session |
-| `binary_sensor.easee_[name]_cable_locked` | Cable connected |
-
-Replace `switch.ev_charger` with `switch.easee_[name]_smart_charging` or create a template switch.
-
-### go-E Charger (HACS)
-
-| Entity | Description |
-|---|---|
-| `switch.go_echarger_[serial]_allow_charging` | Allow charging on/off |
-| `sensor.go_echarger_[serial]_power_active_power` | Power (W) |
-| `sensor.go_echarger_[serial]_car` | Car status (1=no car, 2=charging, 3=waiting, 4=charged) |
-| `binary_sensor.go_echarger_[serial]_car_connected` | Car connected |
-
-### Zaptec (official HA integration)
-
-| Entity | Description |
-|---|---|
-| `switch.zaptec_[name]_charging_available` | Enable/disable charging |
-| `sensor.zaptec_[name]_charge_state` | State (Unknown/Disconnected/Waiting/Charging/Finished) |
-| `sensor.zaptec_[name]_total_charge_power` | Power (kW) |
-| `binary_sensor.zaptec_[name]_is_connected` | Car connected |
-
-### Alfen (HACS)
-
-| Entity | Description |
-|---|---|
-| `switch.alfen_[name]_enable_charging` | Enable/disable charging |
-| `sensor.alfen_[name]_power_active_import` | Power (W) |
-| `sensor.alfen_[name]_status_connector_1` | Status code |
+> Entity names may include the device's hostname. If your charger is named "Alfen Eve Pro", entities may be `sensor.alfen_eve_pro_status` etc. Run the discovery template above.
 
 ---
 
-## Nord Pool Entity Name Variants
+## Tesla Entities (Official Integration)
 
-Entity names differ between the official integration and HACS version:
+| Entity | Description | Reliable? |
+|---|---|---|
+| `sensor.tesla_battery_level` | State of Charge | ⚠️ Cloud, can be unavailable |
+| `sensor.tesla_battery_range` | Estimated range | ⚠️ Cloud |
+| `binary_sensor.tesla_charging` | Is charging | ⚠️ Use Alfen power instead |
+| `binary_sensor.tesla_plugged_in` | Is plugged in | ⚠️ Use Alfen status instead |
+| `switch.tesla_charger` | Enable/disable charging | ⚠️ Cloud control |
+| `number.tesla_charging_amps` | Charging amperage | ⚠️ Cloud, don't use for control |
+| `device_tracker.tesla` | Vehicle location | OK when available |
 
-| Integration | Current price entity | Today's prices attribute | Tomorrow's prices attribute |
+> Entity names include vehicle name. If your Tesla is named "Model Y", entities may be `sensor.model_y_battery_level`.
+
+---
+
+## Nord Pool Entities
+
+| Integration | Current price entity | Today prices | Tomorrow prices |
 |---|---|---|---|
-| **Official HA Nord Pool** | `sensor.nord_pool_nl_current_price` | `today` | `tomorrow` |
-| **HACS Nord Pool** (older) | `sensor.nordpool_kwh_nl_eur_3_10_025` | `raw_today` | `raw_tomorrow` |
+| **Official HA Nord Pool** | `sensor.nord_pool_nl_current_price` | `today` attribute | `tomorrow` attribute |
+| **HACS Nord Pool** (older) | `sensor.nordpool_kwh_nl_eur_3_10_025` | `raw_today` attribute | `raw_tomorrow` attribute |
 
-If you use the HACS version, update `energy_prices.yaml`:
-```yaml
-# Change:
-nordpool_entity: sensor.nordpool_kwh_nl_eur_3_10_025
-
-# And in templates, use:
-state_attr('sensor.nordpool_kwh_nl_eur_3_10_025', 'raw_today')
-```
-
-> **Recommendation:** Use the official Nord Pool integration (available since HA 2024.1).
+This repo uses the **official HA Nord Pool** integration. If using HACS version, update:
+- Entity names in `02_energy_prices.yaml`
+- AIO `nordpool_entity` in `02_energy_prices.yaml`
+- Template attribute names: `raw_today` instead of `today`
 
 ---
 
-## Forecast.Solar vs Solcast Entity Names
-
-### Forecast.Solar (official integration)
+## Forecast.Solar Entities
 
 | Entity | Description |
 |---|---|
-| `sensor.forecast_solar_energy_production_today` | Forecast for today (kWh) |
-| `sensor.forecast_solar_energy_production_tomorrow` | Forecast for tomorrow (kWh) |
-| `sensor.forecast_solar_energy_current_hour` | Forecast for current hour (Wh) |
+| `sensor.forecast_solar_energy_production_today` | Today's forecast (kWh) |
+| `sensor.forecast_solar_energy_production_tomorrow` | Tomorrow's forecast (kWh) |
+| `sensor.forecast_solar_energy_current_hour` | Current hour forecast (Wh) |
 
-### Solcast (HACS)
+If using **Solcast** instead (more accurate, recommended):
 
-| Entity | Description |
+| Entity | Replaces |
 |---|---|
-| `sensor.solcast_pv_forecast_today` | Forecast for today (kWh) |
-| `sensor.solcast_pv_forecast_tomorrow` | Forecast for tomorrow (kWh) |
-| `sensor.solcast_pv_power_now` | Current forecast power (W) |
+| `sensor.solcast_pv_forecast_today` | `forecast_solar_energy_production_today` |
+| `sensor.solcast_pv_forecast_tomorrow` | `forecast_solar_energy_production_tomorrow` |
+| `sensor.solcast_pv_power_now` | `forecast_solar_energy_current_hour` |
 
-If using Solcast, update `packages/solar_forecast.yaml`:
-```yaml
-# Replace:
-sensor.forecast_solar_energy_production_tomorrow
-sensor.forecast_solar_energy_production_today
-# With:
-sensor.solcast_pv_forecast_tomorrow
-sensor.solcast_pv_forecast_today
+---
+
+## Bulk Rename Commands
+
+If your entities use different naming (e.g., different device suffix):
+
+### Bash (Linux / macOS / Pi terminal)
+
+```bash
+# Preview: find all entity references in package files
+grep -r "solaredge_i1\|solaredge_m1\|solaredge_b1" packages/
+
+# Rename inverter entities (example: i1 → se10000h)
+find packages/ -name "*.yaml" -exec sed -i \
+  's/solaredge_i1_/solaredge_se10000h_/g' {} \;
+
+# Rename Alfen entities (example: different device name)
+find packages/ scripts/ -name "*.yaml" -exec sed -i \
+  's/alfen_wallbox_/alfen_eve_pro_/g' {} \;
 ```
+
+### PowerShell (Windows)
+
+```powershell
+# Preview: find all entity references
+Get-ChildItem -Path packages,scripts -Filter *.yaml -Recurse |
+  Select-String "solaredge_i1|solaredge_m1|alfen_wallbox"
+
+# Bulk rename (example: alfen_wallbox → alfen_eve_pro)
+Get-ChildItem -Path packages,scripts -Filter *.yaml -Recurse | ForEach-Object {
+    $content = Get-Content $_.FullName -Raw
+    $content = $content -replace 'alfen_wallbox_', 'alfen_eve_pro_'
+    Set-Content $_.FullName -Value $content
+}
+```
+
+---
+
+## Placeholder Entity Checklist
+
+Find all placeholders that need to be replaced:
+
+```bash
+grep -r "← replace" packages/ scripts/ dashboards/
+```
+
+| Placeholder | Replace with |
+|---|---|
+| `switch.washing_machine_smart_plug` | Your washing machine smart plug switch |
+| `switch.dishwasher_smart_plug` | Your dishwasher smart plug switch |
+| `switch.dryer_smart_plug` | Your dryer smart plug switch |
+| `solaredge_i1_ac_energy_kwh` | Your actual energy production entity |
+| `solaredge_m1_imported_kwh` | Your actual grid import energy entity |
+| `solaredge_m1_exported_kwh` | Your actual grid export energy entity |
+
+Smart plug options: IKEA TRADFRI outlets, TP-Link Kasa, Shelly 1PM, Sonoff S26.

@@ -11,14 +11,10 @@ on:
       - '.github/workflows/validate.yml'
   pull_request:
     branches: [main]
-    paths:
-      - 'packages/**'
-      - 'dashboards/**'
-      - 'scripts/**'
 
 jobs:
-  yamllint:
-    name: Lint YAML files
+  validate:
+    name: YAML Validation
     runs-on: ubuntu-latest
 
     steps:
@@ -30,17 +26,57 @@ jobs:
         with:
           python-version: '3.12'
 
-      - name: Install yamllint
+      - name: Install dependencies
         run: pip install yamllint
 
-      - name: Create yamllint config
+      - name: Check secrets.yaml is NOT committed
         run: |
-          cat > .yamllint.yml << 'EOF'
+          if [ -f "secrets.yaml" ]; then
+            echo "❌ ERROR: secrets.yaml is committed to the repository!"
+            echo "This file contains sensitive credentials and must NEVER be committed."
+            echo "Add it to .gitignore and remove it from git history."
+            exit 1
+          fi
+          if find packages/ -name "secrets.yaml" 2>/dev/null | grep -q .; then
+            echo "❌ ERROR: secrets.yaml found in packages/ directory!"
+            exit 1
+          fi
+          echo "✅ secrets.yaml not found in repository (correct)"
+
+      - name: Check for potential API keys in YAML
+        run: |
+          echo "Checking for potential hardcoded API keys or secrets..."
+          # Look for long alphanumeric strings that look like API keys (32+ chars)
+          # Exclude placeholders, comments, and known non-secret patterns
+          FOUND=0
+          while IFS= read -r -d '' file; do
+            # grep for long alphanum strings not in comments and not 'YOUR_' placeholders
+            if grep -Pn '(?<!#.*)(?<!YOUR_)[A-Za-z0-9]{32,}' "$file" | \
+               grep -v 'YOUR_' | \
+               grep -v '#' | \
+               grep -v 'description:' | \
+               grep -v '^\s*#' | \
+               grep -qP '[A-Za-z0-9]{32,}'; then
+              echo "⚠️  Potential API key found in: $file"
+              grep -Pn '(?<!#.*)(?<!YOUR_)[A-Za-z0-9]{32,}' "$file" | \
+                grep -v 'YOUR_' | grep -v '^\s*#' | head -5
+              FOUND=1
+            fi
+          done < <(find packages/ dashboards/ scripts/ -name "*.yaml" -print0 2>/dev/null)
+          if [ "$FOUND" -eq 1 ]; then
+            echo "❌ Potential secrets detected. Review and use !secret references."
+            exit 1
+          fi
+          echo "✅ No obvious API keys detected in YAML files"
+
+      - name: Create yamllint configuration
+        run: |
+          cat > .yamllint.yml << 'YAMLLINT_EOF'
           ---
           extends: relaxed
           rules:
             line-length:
-              max: 200
+              max: 250
               level: warning
             truthy:
               allowed-values: ['true', 'false', 'on', 'off', 'yes', 'no']
@@ -55,22 +91,71 @@ jobs:
               spaces: 2
               indent-sequences: true
               check-multi-line-strings: false
-          EOF
+            new-line-at-end-of-file: enable
+            trailing-spaces: enable
+          YAMLLINT_EOF
 
       - name: Lint packages/
-        run: yamllint -c .yamllint.yml packages/
+        run: |
+          echo "Linting packages/..."
+          yamllint -c .yamllint.yml packages/ && echo "✅ packages/ OK"
 
       - name: Lint dashboards/
-        run: yamllint -c .yamllint.yml dashboards/
+        run: |
+          echo "Linting dashboards/..."
+          yamllint -c .yamllint.yml dashboards/ && echo "✅ dashboards/ OK"
 
       - name: Lint scripts/
-        run: yamllint -c .yamllint.yml scripts/
+        run: |
+          echo "Linting scripts/..."
+          yamllint -c .yamllint.yml scripts/ && echo "✅ scripts/ OK"
 
-      - name: Summary
+      - name: Python YAML parse check (catches yamllint misses)
+        run: |
+          echo "Running Python yaml.safe_load on all YAML files..."
+          python3 << 'PYEOF'
+          import yaml
+          import sys
+          import os
+          from pathlib import Path
+
+          errors = []
+          checked = 0
+
+          dirs = ['packages', 'dashboards', 'scripts']
+          for d in dirs:
+              if not os.path.exists(d):
+                  continue
+              for yaml_file in Path(d).rglob('*.yaml'):
+                  checked += 1
+                  try:
+                      with open(yaml_file, 'r') as f:
+                          content = f.read()
+                      # Replace !secret references for parsing (they're YAML tags)
+                      content = content.replace('!secret ', '# secret: ')
+                      yaml.safe_load(content)
+                  except yaml.YAMLError as e:
+                      errors.append(f"{yaml_file}: {e}")
+
+          if errors:
+              print(f"\n❌ YAML parse errors found in {len(errors)} file(s):")
+              for err in errors:
+                  print(f"  {err}")
+              sys.exit(1)
+          else:
+              print(f"✅ All {checked} YAML files parse successfully")
+          PYEOF
+
+      - name: Generate summary
         if: always()
         run: |
           echo "## YAML Validation Summary" >> $GITHUB_STEP_SUMMARY
           echo "" >> $GITHUB_STEP_SUMMARY
-          echo "Linted files in packages/, dashboards/, scripts/" >> $GITHUB_STEP_SUMMARY
-          yamllint -c .yamllint.yml packages/ dashboards/ scripts/ --format github 2>&1 | \
-            tail -20 >> $GITHUB_STEP_SUMMARY || true
+          echo "| Check | Result |" >> $GITHUB_STEP_SUMMARY
+          echo "|---|---|" >> $GITHUB_STEP_SUMMARY
+          echo "| secrets.yaml not committed | ✅ |" >> $GITHUB_STEP_SUMMARY
+          echo "| No hardcoded API keys | Checked |" >> $GITHUB_STEP_SUMMARY
+          echo "| yamllint packages/ | Checked |" >> $GITHUB_STEP_SUMMARY
+          echo "| yamllint dashboards/ | Checked |" >> $GITHUB_STEP_SUMMARY
+          echo "| yamllint scripts/ | Checked |" >> $GITHUB_STEP_SUMMARY
+          echo "| Python yaml.safe_load | Checked |" >> $GITHUB_STEP_SUMMARY

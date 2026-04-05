@@ -1,245 +1,309 @@
-# Setup Guide
+# Complete Setup Guide
 
-Step-by-step setup for the HA energy automation package on a Dutch household with SolarEdge SE10000H, upcoming SolarEdge Home Battery 9.7kWh, Nord Pool NL dynamic contract, EV charger, and Stedin three-phase P1 meter (HomeWizard).
+## Before You Start: Priority Actions
+
+**⚠️ Step 1 is the most important step. Do it first.**
 
 ---
 
-## 1. Enable Packages in `configuration.yaml`
+## Step 1: Run an Ethernet Cable to the Inverter
 
-Add the packages directory to your HA configuration:
+**DO THIS BEFORE ANYTHING ELSE.**
+
+SolarEdge is deprecating WiFi Modbus TCP in firmware updates. Your SE10000H is currently WiFi-only. Without Ethernet, the Modbus connection **will break** on the next firmware push, disabling all battery and solar monitoring automations.
+
+- The RJ45 port is on the **bottom of the SE10000H** behind the communication cover
+- Run a CAT6 cable from the inverter to your home network (router or switch)
+- Assign a **static DHCP reservation** in your router for the inverter's MAC address
+- Update `secrets.yaml` with the static IP: `solaredge_modbus_host: "192.168.1.XXX"`
+
+**Can't run Ethernet immediately?** See `docs/MODBUS_PROXY.md` for the temporary ha-modbusproxy workaround. But plan for Ethernet — it's the only permanent solution.
+
+---
+
+## Step 2: Enable Packages in `configuration.yaml`
+
+Add to your HA configuration file (`/config/configuration.yaml`):
 
 ```yaml
 homeassistant:
   packages: !include_dir_named packages
 ```
 
-Copy all files from `packages/` to your HA config directory at `config/packages/`.
+Create the directory `/config/packages/` and copy all YAML files from the `packages/` directory of this repo into it.
+
+**Verify the packages directory:**
+```
+/config/
+├── configuration.yaml
+├── packages/
+│   ├── 00_secrets_template.yaml
+│   ├── 01_system_watchdogs.yaml
+│   ├── 02_energy_prices.yaml
+│   ├── 03_solaredge.yaml
+│   ├── 04_battery_state_machine.yaml
+│   ├── 05_battery_automations.yaml
+│   ├── 06_alfen_ev_charging.yaml
+│   ├── 07_appliances.yaml
+│   └── 08_solar_forecast.yaml
+└── secrets.yaml  ← you create this from template
+```
 
 ---
 
-## 2. HomeWizard P1 Meter (Local API)
+## Step 3: Create `secrets.yaml`
 
-**Requirements:** HomeWizard P1 with local API firmware (v5.0+)
+Copy `packages/00_secrets_template.yaml` to `/config/secrets.yaml` (note: NOT in the packages folder) and fill in your actual values:
 
-1. Open the HomeWizard Energy app
+```bash
+cp packages/00_secrets_template.yaml /config/secrets.yaml
+```
+
+Then edit `/config/secrets.yaml`:
+- `notify_target`: Find your notify service in **Developer Tools → Services → search "notify."**
+- `solaredge_modbus_host`: Your inverter's static IP (from Step 1)
+- Other secrets: see comments in the template for instructions
+
+**NEVER commit `secrets.yaml` — it is gitignored.**
+
+---
+
+## Step 4: HomeWizard P1 Meter (Local API)
+
+**Requirements:** HomeWizard P1 HWE-P1 with firmware v5.0+
+
+1. Open the **HomeWizard Energy app** on your phone
 2. Go to **Settings → Meters → [Your P1 meter] → Local API**
-3. Enable the local API
-4. In HA: **Settings → Integrations → + Add → HomeWizard Energy**
-5. Enter the IP address shown in the app
+3. Enable the local API toggle
+4. Note the IP address shown in the app
+5. In HA: **Settings → Integrations → + Add → HomeWizard Energy**
+6. HA should auto-discover the meter, or enter the IP manually
 
-**Expected entities:**
-| Entity | Description |
-|---|---|
-| `sensor.p1_meter_power_import_t1` | Import tarriff 1 (kW) |
-| `sensor.p1_meter_power_export_t1` | Export tarriff 1 (kW) |
-| `sensor.p1_meter_energy_import_tariff_1` | Total import T1 (kWh) |
-| `sensor.p1_meter_energy_export_tariff_1` | Total export T1 (kWh) |
-| `sensor.p1_meter_active_power_l1_w` | Phase L1 power (W) |
-| `sensor.p1_meter_active_power_l2_w` | Phase L2 power (W) |
-| `sensor.p1_meter_active_power_l3_w` | Phase L3 power (W) |
+**Assign a static DHCP reservation** for the P1 meter's MAC address in your router.
+
+Expected entity names (device name may differ):
+- `sensor.p1_meter_active_power_import_l1_w` (phase L1)
+- `sensor.p1_meter_active_power_import_l2_w` (phase L2)
+- `sensor.p1_meter_active_power_import_l3_w` (phase L3)
+- `sensor.p1_meter_total_power_import_kwh`
+- `sensor.p1_meter_total_power_export_kwh`
+
+> The SE10000H is a single-phase inverter (L1). For whole-house consumption, sum all three phases from the P1 meter.
 
 ---
 
-## 3. Nord Pool Integration
-
-**Option A: Official HA Nord Pool integration (recommended)**
+## Step 5: Nord Pool Integration (NL, EUR)
 
 1. **Settings → Integrations → + Add → Nord Pool**
-2. Select area: **NL** (Netherlands)
-3. Currency: **EUR**
+2. Configure:
+   - **Area:** `NL` (Netherlands)
+   - **Currency:** `EUR`
+3. Click **Submit**
 
-Entity: `sensor.nord_pool_nl_current_price`
+Expected entity: `sensor.nord_pool_nl_current_price`
 
-**Option B: HACS Nord Pool**
+The sensor's attributes contain `today` and `tomorrow` price arrays (24 values each).
 
-1. Install via HACS: search for "Nord Pool"
-2. Configure with area `NL`
+> **If using Frank Energie instead of Nord Pool directly:**
+> Install HACS integration "Frank Energie" and replace `sensor.nord_pool_nl_current_price` with `sensor.frank_energie_current_price` in `02_energy_prices.yaml`. Frank prices are already all-in — remove the tax calculation from the `energy_price_all_in` template.
 
-> **Note:** Entity names differ between integrations. See `docs/ENTITY_NAMES.md` for mapping.
+> **Tibber users:** Use `sensor.tibber_price_current` and similar approach.
 
 ---
 
-## 4. Forecast.Solar Integration
+## Step 6: Forecast.Solar Integration
 
 1. **Settings → Integrations → + Add → Forecast.Solar**
 2. Configure with your panel specs:
-   - **Latitude/Longitude:** your address (auto-filled from HA)
-   - **Declination (tilt):** angle of your panels from horizontal (e.g., 35)
-   - **Azimuth:** direction panels face (0=N, 90=E, 180=S, 270=W; south-facing = 180)
-   - **kWp:** your total installed capacity (e.g., 4.0)
-3. Optionally configure a Forecast.Solar API key for more accurate data
+   - **Latitude/Longitude:** auto-filled from HA location
+   - **Declination (tilt):** angle from horizontal (e.g., 35° for typical roof pitch)
+   - **Azimuth:** compass direction panels face (0=N, 90=E, 180=S, 270=W). South-facing = 180.
+   - **Power (kWp):** your installed peak power (e.g., 4.0)
+3. Optionally get a free API key at `forecast.solar` for more accurate data
 
-**For Solcast (more accurate, recommended):**
-1. Register free account at solcast.com
-2. Install via HACS: "Solcast PV Solar"
-3. Configure with your API key and site rooftop specs
-4. Update entity names in `packages/solar_forecast.yaml`
+**Expected entities:**
+- `sensor.forecast_solar_energy_production_today`
+- `sensor.forecast_solar_energy_production_tomorrow`
+- `sensor.forecast_solar_energy_current_hour`
+
+**Alternative: Solcast (more accurate)**
+Register at `toolkit.solcast.com.au` (free tier: 10 calls/day).
+Install via HACS: "Solcast PV Solar".
+Then update entity names in `08_solar_forecast.yaml` (see comments in that file).
 
 ---
 
-## 5. SolarEdge Modbus TCP Setup (SE10000H)
+## Step 7: Enable Modbus TCP on SE10000H
 
-### Enable Modbus TCP on the Inverter
+**After running Ethernet cable from Step 1:**
 
-**Method 1: WiFi Hotspot (no installer access needed)**
+### Via LCD Panel (no installer needed)
 
-1. Long-press the inverter LCD button until "P" menu appears
-2. Navigate to **Comm → RS485** and note settings
-3. Navigate to **Comm → Modbus TCP** → set to **Enabled**
-4. Note the IP address shown under **Comm → Eth** (connect to LAN first)
+1. Long-press the LCD button until the `P` menu appears
+2. Navigate to **Comm → Modbus TCP**
+3. Set to **Enabled** (if not already)
+4. Note the IP under **Comm → LAN** (Ethernet connection)
 
-**Method 2: SetApp (recommended for full access)**
+### Via SetApp (requires installer access — ask 50five/your installer)
 
-1. Download SolarEdge SetApp (requires installer account or request from SolarEdge)
+1. Download **SolarEdge SetApp**
 2. Connect via Bluetooth
-3. Navigate to **Communication → Modbus TCP → Enable**
+3. **Communication → Modbus TCP → Enable**
+4. Set **Keep Alive** to `300` seconds
 
-### Ethernet Connection (Strongly Recommended)
+### Verify Modbus Works
 
-For reliable Modbus TCP, use an Ethernet cable instead of WiFi:
+After Ethernet connection is established:
+1. Check router DHCP table for inverter's IP
+2. Try: `nc -z [inverter_IP] 502` from the HA terminal — should connect
+3. Or use the HA Modbus integration to ping the IP
 
-1. Connect RJ45 cable from inverter to your home network switch/router
-2. Assign a static DHCP lease for the inverter MAC address in your router
-3. Note the static IP (e.g., `192.168.1.150`)
+---
 
-### Install SolarEdge Modbus Multi (HACS)
+## Step 8: SolarEdge Modbus Multi (HACS)
 
 1. **HACS → Integrations → + → Search "SolarEdge Modbus Multi"**
-2. Install and restart HA
+2. Install and **restart HA**
 3. **Settings → Integrations → + Add → SolarEdge Modbus Multi**
 4. Configure:
-   - **Host:** inverter IP address (e.g., `192.168.1.150`)
+   - **Host:** your inverter's static IP (from secrets.yaml)
    - **Port:** `502`
-   - **Device ID:** `1`
-   - **Read battery data:** `Yes` (after battery install)
-   - **Read meter data:** `Yes`
+   - **Modbus Device Address:** `1`
+   - **Scan interval:** `30` seconds
+   - **Read battery data:** `No` (for now — enable after battery install)
+   - **Enable storage control:** `No` (enable after battery install)
+
+After configuration, verify:
+- `sensor.solaredge_i1_ac_power` appears (solar AC power in W)
+- `sensor.solaredge_m1_ac_power` appears (grid meter power in W)
+- `binary_sensor.modbus_available` shows `on`
 
 ---
 
-## 6. HACS Integrations to Install
+## Step 9: Alfen Eve Wallbox (HACS)
 
-| Integration | Purpose | HACS Search |
+**⚠️ Read `docs/ALFEN_WARNING.md` before configuring.**
+
+1. Assign a **static IP** for the Alfen Eve in your router (DHCP reservation)
+   - Find MAC address: check router's DHCP table, or sticker on the charger
+2. **HACS → Integrations → + → Search "Alfen EV Wallbox" (leeyuentuen fork)**
+3. Install and restart HA
+4. **Settings → Integrations → + Add → Alfen EV Wallbox**
+5. Configure:
+   - **Host:** Alfen's static IP
+   - **Password:** installer password from 50five documentation (see `secrets.yaml`)
+   - **Username:** `admin` (default)
+
+**Verify session status:**
+- `binary_sensor.alfen_wallbox_https_api_login_status` should be `on`
+- `sensor.alfen_wallbox_status` should show a value (A=no car, B=car connected, C=charging)
+- `sensor.alfen_wallbox_active_power_total` should show charging power in W
+
+**⚠️ Do NOT open Eve Connect or 50five app while HA is connected — see docs/ALFEN_WARNING.md**
+
+---
+
+## Step 10: Tesla Integration
+
+**See `docs/TESLA_SETUP.md` for detailed instructions.**
+
+**Recommended:** Official Tesla integration (HA 2024.x+):
+1. **Settings → Integrations → + Add → Tesla**
+2. Follow OAuth flow
+3. Set polling interval to 300+ seconds (prevents car from staying awake)
+
+**Important:** Tesla SOC is treated as informational only in this repo.
+All EV charging decisions use the Alfen charger's power sensor.
+
+---
+
+## Step 11: HACS Integrations and Frontend Cards
+
+### Integrations (HACS → Integrations)
+
+| Integration | Purpose | Required? |
 |---|---|---|
-| **SolarEdge Modbus Multi** | Inverter/battery control via Modbus | `SolarEdge Modbus Multi` |
-| **AIO Energy Management** | Cheapest/most expensive hour scheduling | `AIO Energy Management` |
-| **EV Smart Charging** | Smart EV charging integration | `EV Smart Charging` |
-| **Solcast** *(optional)* | Better solar forecast | `Solcast PV Solar` |
-| **Frank Energie** *(optional)* | Frank Energie dynamic pricing | `Frank Energie` |
+| **SolarEdge Modbus Multi** | Inverter + battery control | ✅ Required |
+| **AIO Energy Management** | Cheapest/most expensive hour scheduling | ✅ Required |
+| **alfen_wallbox** (leeyuentuen) | Alfen Eve control | ✅ Required |
+| **tesla_custom** (alandtse) | Tesla data (if not using official) | Optional |
+| **Solcast PV Solar** | Better solar forecast | Optional |
+| **Frank Energie** | Frank Energie pricing (if Frank customer) | Optional |
 
 ### Frontend Cards (HACS → Frontend)
 
-| Card | HACS Search |
-|---|---|
-| **Mushroom Cards** | `Mushroom` |
-| **ApexCharts Card** | `ApexCharts Card` |
-| **Mini Graph Card** | `Mini Graph Card` |
+| Card | Purpose | Required for dashboard? |
+|---|---|---|
+| **Mushroom Cards** | Status chips and template cards | ✅ Yes |
+| **ApexCharts Card** | Price bar chart | ✅ Yes |
+| **Mini Graph Card** | Power history graphs | ✅ Yes |
 
 ---
 
-## 7. Discover Your Entity Names
+## Step 12: Dashboard Setup
 
-Run this template in **Developer Tools → Template** to find your SolarEdge entities:
+1. Go to **Settings → Dashboards → + Add Dashboard**
+2. Name: `Energie`, Icon: `mdi:solar-power`, URL path: `energy`
+3. Open the new dashboard
+4. Click **⋮ (three dots) → Edit Dashboard → Raw configuration editor**
+5. Replace the entire content with `dashboards/energy_dashboard.yaml`
+6. Click **Save**
+
+> **Note:** Requires all HACS frontend cards (Step 11) installed first.
+> Battery-related cards will show "unavailable" until battery is installed.
+
+---
+
+## Step 13: Entity Name Verification
+
+After all integrations are configured, verify entity names match what's in the package files.
+
+Run this template in **Developer Tools → Template** to discover entities:
 
 ```jinja2
-{% set keywords = ['solaredge', 'modbus', 'inverter', 'storage', 'battery', 'meter'] %}
-{% for state in states %}
+{# Find all energy-related entities #}
+{% set keywords = ['solaredge', 'p1_meter', 'nord_pool', 'alfen', 'tesla', 'forecast_solar'] %}
+{% for state in states | sort(attribute='entity_id') %}
   {% for kw in keywords %}
     {% if kw in state.entity_id %}
-      {{ state.entity_id }}: {{ state.state }}
+      {{ state.entity_id }}: {{ state.state }} {{ state.attributes.unit_of_measurement | default('') }}
     {% endif %}
   {% endfor %}
 {% endfor %}
 ```
 
-See `docs/ENTITY_NAMES.md` for the full entity mapping table.
+Compare the output with entity names used in the package files. If they differ, update the package files. See `docs/ENTITY_NAMES.md` for the full reference.
 
----
-
-## 8. Customization Parameters
-
-Update these values in the package files to match your setup:
-
-| Parameter | File | Default | Description |
-|---|---|---|---|
-| `battery_min_soc` | `energy_prices.yaml` | `10%` | Minimum battery SoC before "battery low" alert |
-| `battery_charge_threshold` | `energy_prices.yaml` | `0.05 €/kWh` | Spot price below which grid charging is triggered |
-| `ev_cheap_price_limit` | `energy_prices.yaml` | `0.08 €/kWh` | Spot price limit for cheap EV charging hours |
-| `network_tariff` | `energy_prices.yaml` | `0.0450 €/kWh` | Your network/transport tariff |
-| `solar_sunny_day_threshold` | `solar_forecast.yaml` | `15 kWh` | Forecast kWh above which tomorrow is "sunny" |
-| `solar_cloud_day_threshold` | `solar_forecast.yaml` | `5 kWh` | Forecast kWh below which tomorrow is "cloudy" |
-| `ev_target_soc` | `ev_charging.yaml` | `80%` | Default EV charge target |
-| `ev_minimum_soc` | `ev_charging.yaml` | `20%` | EV emergency charge threshold |
-
----
-
-## 9. Replace Appliance and EV Entity Placeholders
-
-### Appliances (`packages/appliances.yaml`)
-
-Replace these placeholder entities:
-
-```yaml
-switch.washing_machine_smart_plug  # ← your washing machine smart plug
-switch.dishwasher_smart_plug       # ← your dishwasher smart plug
-switch.dryer_smart_plug            # ← your dryer smart plug
+Also replace these placeholders in package files:
+```bash
+grep -r "← replace" packages/ scripts/
 ```
 
-Popular smart plugs: IKEA TRADFRI, TP-Link Kasa, Shelly 1PM, Sonoff S26
+---
 
-### EV Charger (`packages/ev_charging.yaml` and `packages/battery_control.yaml`)
+## Step 14: First Test Checklist
 
-Replace:
-
-```yaml
-switch.ev_charger           # ← your EV charger switch entity
-sensor.ev_state_of_charge   # ← your EV SoC sensor
-binary_sensor.ev_plugged_in # ← your EV plugged-in sensor
-```
-
-See `docs/ENTITY_NAMES.md` for Easee, go-E, Zaptec, and Alfen entity mappings.
+- [ ] HA Config check passes: **Settings → System → Check Configuration**
+- [ ] `sensor.price_freshness_ok` = `true`
+- [ ] `sensor.energy_price_all_in` shows a reasonable value (€0.10–€0.40)
+- [ ] `sensor.solar_production_w` = 0 (night) or a positive value (daytime)
+- [ ] `binary_sensor.modbus_available` = `on`
+- [ ] `sensor.alfen_wallbox_status` not `unavailable`
+- [ ] `binary_sensor.alfen_wallbox_https_api_login_status` = `on`
+- [ ] `binary_sensor.cheapest_4h_overnight` exists (from AIO Energy Management)
+- [ ] No errors in **Settings → System → Logs** related to the packages
+- [ ] Notifications work: trigger the negative price test (set threshold high temporarily)
 
 ---
 
-## 10. Notification Service
+## DST (Daylight Saving Time) Notes
 
-Replace all instances of `notify.mobile_app` with your notification service:
+The Netherlands observes CET (UTC+1 winter) and CEST (UTC+2 summer).
+DST transitions occur on the **last Sunday of March** (spring forward) and **last Sunday of October** (fall back).
 
-```yaml
-notify.mobile_app_[your_phone_name]  # e.g. notify.mobile_app_pixel_8
-notify.pushbullet
-notify.telegram
-```
+**Potential issues on DST transition days:**
+- AIO Energy Management overnight windows may shift by 1 hour
+- Fixed time triggers (09:00, 13:30, 20:30, 22:00) fire at the "wrong" solar time
+- Nord Pool typically publishes D+1 prices relative to CEST/CET — AIO handles this
 
-Find your notify services: **Developer Tools → Services → Search "notify."**
-
----
-
-## 11. Add Dashboard
-
-1. **Settings → Dashboards → + Add Dashboard**
-2. Name: `Energie`, Icon: `mdi:solar-power`, URL: `energy`
-3. Click the new dashboard → **⋮ → Edit Dashboard → Raw configuration editor**
-4. Paste the contents of `dashboards/energy_dashboard.yaml`
-5. Save
-
-> **Note:** Requires HACS frontend cards installed first (Mushroom, ApexCharts, Mini Graph Card).
-
----
-
-## 12. After Battery Install — Checklist
-
-Once the SolarEdge Home Battery 9.7 is installed and commissioned:
-
-- [ ] Confirm `sensor.solaredge_b1_state_of_energy` is available
-- [ ] Confirm `sensor.solaredge_b1_dc_power` is available
-- [ ] Confirm `sensor.solaredge_b1_status` is available
-- [ ] Confirm `select.solaredge_i1_storage_control_mode` is available
-- [ ] Confirm `select.solaredge_i1_storage_default_mode` is available
-- [ ] Enable "Storage controls" in SolarEdge Modbus Multi integration settings
-- [ ] Enable "Home Hub" / "Battery" in the SE App
-- [ ] Test `script.reset_battery_to_self_consumption` from Developer Tools → Services
-- [ ] Verify `automation.battery_enable_remote_control_startup` runs on restart
-- [ ] Check `sensor.battery_soc_pct` shows correct percentage
-- [ ] Monitor `select.solaredge_i1_storage_default_mode` changes in logbook
-
-See `docs/NOW_VS_LATER.md` for full commissioning checklist.
+**Recommended:** On DST transition days, manually verify that overnight appliance scheduling runs as expected and check `binary_sensor.cheapest_4h_overnight` timing.

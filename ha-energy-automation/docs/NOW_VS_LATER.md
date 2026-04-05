@@ -1,6 +1,6 @@
 # Now vs Later — What to Enable
 
-This document describes what you can configure and use **right now** (before battery install) versus what needs to wait until the **battery is installed and commissioned**.
+What you can use **immediately** (before battery install) vs what requires **the SolarEdge Home Battery 9.7 and Home Hub** to be installed and commissioned.
 
 ---
 
@@ -8,110 +8,114 @@ This document describes what you can configure and use **right now** (before bat
 
 | Feature | Package | Status |
 |---|---|---|
-| Nord Pool price sensors | `energy_prices.yaml` | ✅ Enable now |
-| All-in price template sensor | `energy_prices.yaml` | ✅ Enable now |
-| AIO Energy Management schedules | `energy_prices.yaml` | ✅ Enable now |
-| Price helpers (input_number, input_boolean) | `energy_prices.yaml` | ✅ Enable now |
-| Negative price alert automation | `energy_prices.yaml` | ✅ Enable now |
-| SolarEdge inverter template sensors | `solaredge.yaml` | ✅ Enable now (inverter only) |
-| Solar production/grid sensors | `solaredge.yaml` | ✅ Enable now |
-| Utility meters (daily/monthly) | `solaredge.yaml` | ✅ Enable now |
-| `binary_sensor.solar_producing` | `solaredge.yaml` | ✅ Enable now |
-| `binary_sensor.exporting_to_grid` | `solaredge.yaml` | ✅ Enable now |
-| HomeWizard P1 three-phase meter | `solaredge.yaml` | ✅ Enable now |
-| EV smart charging | `ev_charging.yaml` | ✅ Enable now |
-| Appliance scheduling | `appliances.yaml` | ✅ Enable now |
-| Solar forecast sensors | `solar_forecast.yaml` | ✅ Enable now (Forecast.Solar) |
-| Daily forecast → grid charge decision | `solar_forecast.yaml` | ⚠️ Enable, but `allow_grid_battery_charge` has no effect until battery is installed |
-| Energy dashboard | `dashboards/energy_dashboard.yaml` | ✅ Enable now (battery cards will show unavailable) |
+| Nord Pool price sensors | `02_energy_prices.yaml` | ✅ Works now |
+| All-in price template (`sensor.energy_price_all_in`) | `02_energy_prices.yaml` | ✅ Works now |
+| Price freshness guard (`sensor.price_freshness_ok`) | `02_energy_prices.yaml` | ✅ Works now |
+| AIO Energy Management schedules (cheapest 4h, 6h, most expensive 4h) | `02_energy_prices.yaml` | ✅ Works now |
+| Price helpers (input_number, input_boolean) | `02_energy_prices.yaml` | ✅ Works now |
+| Negative price alert | `02_energy_prices.yaml` | ✅ Works now |
+| SolarEdge inverter production sensors | `03_solaredge.yaml` | ✅ Works now (Modbus required) |
+| Grid power/import/export sensors | `03_solaredge.yaml` | ✅ Works now (P1 + Modbus) |
+| House consumption sensors | `03_solaredge.yaml` | ✅ Works now |
+| `binary_sensor.solar_producing` | `03_solaredge.yaml` | ✅ Works now |
+| `binary_sensor.exporting_to_grid` | `03_solaredge.yaml` | ✅ Works now |
+| `binary_sensor.modbus_available` | `03_solaredge.yaml` | ✅ Works now |
+| Utility meters (daily/monthly solar, grid) | `03_solaredge.yaml` | ✅ Works now |
+| System watchdogs (Modbus, Alfen, price) | `01_system_watchdogs.yaml` | ✅ Works now |
+| Battery mode input_select (safe dummy) | `04_battery_state_machine.yaml` | ✅ Safe now (executor guards availability) |
+| EV smart charging (Alfen) | `06_alfen_ev_charging.yaml` | ✅ Works now |
+| Appliance scheduling | `07_appliances.yaml` | ✅ Works now |
+| Solar forecast sensors | `08_solar_forecast.yaml` | ✅ Works now (Forecast.Solar required) |
+| Daily grid charge permission (13:30) | `05_battery_automations.yaml` | ⚠️ Runs but has no effect without battery |
+| Energy dashboard | `dashboards/energy_dashboard.yaml` | ✅ Battery cards show "unavailable" — OK |
 
 ---
 
-## Enable After Battery Install
+## Requires Battery Install (Activate After Battery Commissioning)
 
 | Feature | Package | Requires |
 |---|---|---|
-| Battery template sensors (`battery_soc_pct`, `battery_power_w`, etc.) | `solaredge.yaml` | `solaredge_b1_*` Modbus entities |
-| `binary_sensor.battery_low` | `solaredge.yaml` | `solaredge_b1_state_of_energy` |
-| `binary_sensor.battery_charging/discharging` | `solaredge.yaml` | `solaredge_b1_dc_power` |
-| All battery_control.yaml automations | `battery_control.yaml` | Battery + Home Hub + storage controls enabled |
-| `script.reset_battery_to_self_consumption` | `scripts/reset_battery_mode.yaml` | `select.solaredge_i1_storage_*` |
-| `script.force_battery_charge_from_grid` | `scripts/reset_battery_mode.yaml` | Battery + storage controls |
-| `script.force_battery_discharge` | `scripts/reset_battery_mode.yaml` | Battery + storage controls |
-| EV charging interaction with battery | `battery_control.yaml` | `automation.battery_hold_during_ev_charging` |
-| `battery_will_fill_from_solar_tomorrow` | `solar_forecast.yaml` | `sensor.battery_energy_remaining_kwh` |
-| `battery_grid_top_up_needed_kwh` | `solar_forecast.yaml` | `sensor.battery_energy_remaining_kwh` |
+| Battery template sensors (`battery_soc_pct`, `battery_power_w`, etc.) | `03_solaredge.yaml` | `solaredge_b1_*` Modbus entities |
+| `binary_sensor.battery_available` = true | `03_solaredge.yaml` | `solaredge_b1_state_of_energy` available |
+| `binary_sensor.battery_low` | `03_solaredge.yaml` | `solaredge_b1_state_of_energy` |
+| `binary_sensor.battery_charging/discharging` | `03_solaredge.yaml` | `solaredge_b1_dc_power` |
+| Mode Executor actually writes to Modbus | `04_battery_state_machine.yaml` | `battery_available = on` |
+| Battery rules write to Modbus (all rules) | `05_battery_automations.yaml` | Battery available |
+| GRID_CHARGE, PEAK_DISCHARGE modes | `04_battery_state_machine.yaml` | Battery + storage controls |
+| HOLD mode (EV hold) | `04_battery_state_machine.yaml` | Battery + storage controls |
+| Manual force scripts | `scripts/battery_mode_override.yaml` | Battery available |
+| `battery_energy_remaining_kwh` | `03_solaredge.yaml` | `solaredge_b1_state_of_energy` |
+| `battery_grid_topup_needed_kwh` | `08_solar_forecast.yaml` | `battery_energy_remaining_kwh` |
+| `binary_sensor.battery_will_fill_naturally` | `08_solar_forecast.yaml` | Battery entities |
 
 ---
 
-## Entities That Will Show "Unavailable" Until Battery Install
+## Entities That Show "Unavailable" Until Battery Install
 
-These entities exist in the package files but will show `unavailable` until the battery hardware is installed:
+These entities exist in the YAML files and are intentionally unavailable until hardware is installed. All automation conditions guard against this:
 
-**Modbus entities (populated by SolarEdge Modbus Multi):**
-- `sensor.solaredge_b1_state_of_energy`
-- `sensor.solaredge_b1_dc_power`
-- `sensor.solaredge_b1_status`
-- `sensor.solaredge_b1_energy_charged`
-- `sensor.solaredge_b1_energy_discharged`
-- `select.solaredge_i1_storage_control_mode`
-- `select.solaredge_i1_storage_default_mode`
+**SolarEdge Modbus Multi (battery entities):**
+- `sensor.solaredge_b1_state_of_energy` — battery SOC
+- `sensor.solaredge_b1_dc_power` — battery power flow
+- `sensor.solaredge_b1_status` — battery status code
+- `sensor.solaredge_b1_energy_charged` — total energy charged
+- `sensor.solaredge_b1_energy_discharged` — total energy discharged
+- `select.solaredge_i1_storage_control_mode` — battery control mode
+- `select.solaredge_i1_storage_default_mode` — battery default mode
 
-**Template sensors derived from battery:**
+**Template sensors (derived from battery):**
 - `sensor.battery_soc_pct`
 - `sensor.battery_power_w`
 - `sensor.battery_energy_remaining_kwh`
 - `sensor.battery_status`
+- `binary_sensor.battery_available` ← becomes `on` when battery entities appear
 - `binary_sensor.battery_low`
 - `binary_sensor.battery_charging`
 - `binary_sensor.battery_discharging`
 
-**Calculated sensors:**
-- `sensor.battery_grid_top_up_needed_kwh`
-- `binary_sensor.battery_will_fill_from_solar_tomorrow`
-
-> All battery automations include availability guards (`condition: template` checking `not in ['unavailable', 'unknown']`) to prevent errors before battery install.
-
 ---
 
-## Battery Commissioning Day Checklist
+## Battery Install Commissioning Checklist
 
-On the day the battery is installed and commissioned:
+### Day of Installation
 
-### During Install
-- [ ] Ensure SolarEdge Modbus TCP is still enabled after inverter firmware update
-- [ ] Confirm Ethernet connection to inverter (preferred over WiFi)
-- [ ] Note any changes to inverter IP address
+Before the installer arrives:
+- [ ] Confirm SolarEdge Home Hub is part of the order (required for battery control)
+- [ ] Ensure Ethernet is connected to the inverter (critical — see docs/MODBUS_PROXY.md)
+- [ ] Note the current inverter firmware version (from monitoring.solaredge.com or LCD)
 
-### After Commissioning
-- [ ] Open HA → **Settings → Integrations → SolarEdge Modbus Multi → Configure**
+During installation:
+- [ ] Ask installer to confirm Modbus TCP is still enabled after any firmware updates
+- [ ] Ask installer to confirm Home Hub is commissioned and communicating with inverter
+- [ ] Note any changes to inverter IP address (DHCP may assign a new one)
+
+### After Installation (Day 1)
+
+- [ ] Check that inverter IP hasn't changed (router DHCP table)
+- [ ] Open HA: verify `sensor.solaredge_i1_ac_power` is still available (Modbus intact)
+- [ ] Go to **Settings → Integrations → SolarEdge Modbus Multi → Configure**
 - [ ] Enable **"Read battery data"** and **"Enable storage control"**
-- [ ] Restart HA (or reload the integration)
-- [ ] Verify `sensor.solaredge_b1_state_of_energy` shows battery percentage
+- [ ] Restart HA (Settings → System → Restart)
+- [ ] Verify `sensor.solaredge_b1_state_of_energy` appears (battery SOC)
+- [ ] Verify `binary_sensor.battery_available` shows `on`
 - [ ] Verify `select.solaredge_i1_storage_control_mode` appears
-- [ ] Verify `select.solaredge_i1_storage_default_mode` appears
 
-### Test Battery Automations
-- [ ] **Developer Tools → Services** → Call `script.reset_battery_to_self_consumption`
-- [ ] Check `select.solaredge_i1_storage_default_mode` changes to "Maximize Self Consumption"
-- [ ] Restart HA → verify `automation.battery_enable_remote_control_startup` fires
-- [ ] Manually test `script.force_battery_charge_from_grid` (duration: 15 min)
-- [ ] Verify `input_select.battery_mode_override` auto-resets to `auto` after timer
+### Battery Control Verification (Week 1)
 
-### First Week Monitoring
-- [ ] Monitor logbook for battery automation triggers
-- [ ] Adjust `battery_charge_threshold` (default €0.05/kWh) based on your contract
-- [ ] Adjust `battery_min_soc` based on backup power needs
-- [ ] Verify `battery_will_fill_from_solar_tomorrow` accuracy vs actual production
+- [ ] Call `script.reset_battery_to_self_consumption` via Developer Tools → Services
+- [ ] Verify `select.solaredge_i1_storage_default_mode` changes to "Maximize Self Consumption"
+- [ ] Restart HA and verify `automation.battery_startup_init` fires (check logbook)
+- [ ] Verify `input_text.battery_last_action` gets updated on HA restart
+- [ ] Manually test `script.force_battery_charge_from_grid` (set duration: 15 min)
+- [ ] Verify `input_select.battery_desired_mode` shows `FORCE_CHARGE` during test
+- [ ] Verify it automatically resets to `SELF_CONSUME` after 15 minutes
+- [ ] Monitor logbook for battery automation triggers for 48 hours
 
----
+### Settings to Adjust After Battery Install
 
-## Frank Energie vs Tibber vs Nord Pool Sensor
-
-| Provider | Best for | Notes |
+| Setting | Default | Recommended adjustment |
 |---|---|---|
-| **Frank Energie** *(HACS)* | Frank Energie customers | Use `sensor.frank_energie_current_price` for all-in price (already includes taxes) |
-| **Tibber** *(official)* | Tibber customers | Use `sensor.tibber_price_current` |
-| **Nord Pool** *(official/HACS)* | Any contract using spot pricing | Use for calculations; must add energiebelasting + BTW yourself (done in `energy_prices.yaml`) |
-
-> If you're a Frank Energie customer, replace `sensor.nord_pool_nl_current_price` with `sensor.frank_energie_current_price` and remove the all-in price calculation (Frank already returns all-in prices).
+| `battery_min_soc` | 20% | Adjust based on your backup power needs (10% if no backup needed, 30% if you want emergency reserve) |
+| `battery_charge_price_threshold` | 0.02 €/kWh | Start conservative, increase if cheap hours aren't triggering |
+| `solar_sunny_day_threshold` | 15 kWh | Adjust after observing actual peak production days |
+| `solar_cloud_day_threshold` | 5 kWh | Adjust after observing actual cloudy day production |

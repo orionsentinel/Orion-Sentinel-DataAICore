@@ -1,0 +1,310 @@
+---
+# 02_energy_prices.yaml
+# ──────────────────────────────────────────────────────────────────────────────
+# Nord Pool NL spot pricing, all-in price calculations, AIO Energy Management
+# configuration, price-derived helpers, and freshness guards.
+#
+# FRESHNESS GUARD: All price-triggered automations must check sensor.price_freshness_ok
+# before acting. Acting on stale prices is a real failure mode (e.g. after HA restart).
+# Threshold: price sensor last_updated within 90 minutes (5400 seconds).
+#
+# DST NOTE: Nord Pool typically publishes D+1 prices at 13:00-14:00 CET/CEST.
+# On DST transition days, AIO scheduling windows may shift by 1 hour.
+# See docs/SETUP.md for manual verification steps on DST days.
+# ──────────────────────────────────────────────────────────────────────────────
+
+# ── Price-related helpers ──────────────────────────────────────────────────────
+input_number:
+  network_tariff:
+    name: "Netwerktarief (transport + systeemdiensten)"
+    min: 0.00
+    max: 0.20
+    step: 0.001
+    unit_of_measurement: "€/kWh"
+    icon: mdi:transmission-tower
+    initial: 0.04
+    # Adjust to your Stedin network tariff. Check your energy bill.
+    # Typical NL 2024: 0.035–0.055 €/kWh depending on connection capacity.
+
+  battery_charge_price_threshold:
+    name: "Prijsdrempel batterij laden van net"
+    min: -0.20
+    max: 0.15
+    step: 0.01
+    unit_of_measurement: "€/kWh"
+    icon: mdi:battery-charging
+    initial: 0.02
+    # Spot price (excl. taxes) below which grid→battery charging is activated.
+    # At 0.02: only charges if spot < 2 ct/kWh (very cheap or negative).
+    # Increase to 0.05-0.08 if you want to charge more aggressively.
+
+  ev_charge_price_threshold:
+    name: "Prijsdrempel EV laden"
+    min: -0.20
+    max: 0.25
+    step: 0.01
+    unit_of_measurement: "€/kWh"
+    icon: mdi:car-electric
+    initial: 0.08
+    # Spot price below which EV charging is considered "cheap".
+
+  battery_min_soc:
+    name: "Batterij minimum SoC"
+    min: 5
+    max: 50
+    step: 5
+    unit_of_measurement: "%"
+    icon: mdi:battery-low
+    initial: 20
+    # Battery will not discharge below this level. Provides backup capacity.
+
+input_boolean:
+  allow_grid_battery_charge:
+    name: "Sta toe: batterij laden van net"
+    icon: mdi:battery-charging-outline
+    initial: true
+    # Master switch. Disabled automatically on sunny forecast days.
+    # Override manually via dashboard.
+
+# ── Price template sensors ─────────────────────────────────────────────────────
+template:
+  - sensor:
+      - name: "price_freshness_ok"
+        unique_id: price_freshness_ok
+        icon: mdi:clock-check
+        state: >
+          {% if states('sensor.nord_pool_nl_current_price') in ['unavailable', 'unknown', 'none'] %}
+            false
+          {% else %}
+            {% set age = (now() - states.sensor.nord_pool_nl_current_price.last_updated).total_seconds() %}
+            {{ age < 5400 }}
+          {% endif %}
+        # True = price data is fresh (< 90 min old). Always check this before acting.
+
+      - name: "energy_price_all_in"
+        unique_id: energy_price_all_in
+        unit_of_measurement: "€/kWh"
+        device_class: monetary
+        state_class: measurement
+        icon: mdi:currency-eur
+        # Formula: (spot + energiebelasting €0.1228 + network_tariff) × BTW 1.21
+        # energiebelasting 2024: €0.1228/kWh (excl. BTW), fixed by government.
+        # BTW: 21% over all components.
+        # Your specific network tariff: set in input_number.network_tariff.
+        state: >
+          {% set spot = states('sensor.nord_pool_nl_current_price') | float(0) %}
+          {% set eb = 0.1228 %}
+          {% set network = states('input_number.network_tariff') | float(0.04) %}
+          {% set vat = 1.21 %}
+          {{ ((spot + eb + network) * vat) | round(4) }}
+        availability: >
+          {{ states('sensor.nord_pool_nl_current_price') not in ['unavailable', 'unknown', 'none']
+             and states('sensor.price_freshness_ok') == 'true' }}
+        attributes:
+          spot_price_eur_kwh: >
+            {{ states('sensor.nord_pool_nl_current_price') | float(0) | round(5) }}
+          energiebelasting_eur_kwh: 0.1228
+          network_tariff_eur_kwh: >
+            {{ states('input_number.network_tariff') | float(0.04) | round(4) }}
+          vat_multiplier: 1.21
+          price_level: >
+            {% set price = states('sensor.energy_price_all_in') | float(0) %}
+            {% if price < 0 %}negatief
+            {% elif price < 0.15 %}zeer_goedkoop
+            {% elif price < 0.25 %}goedkoop
+            {% elif price < 0.35 %}gemiddeld
+            {% elif price < 0.45 %}duur
+            {% else %}zeer_duur{% endif %}
+          fresh: >
+            {{ states('sensor.price_freshness_ok') }}
+
+      - name: "today_price_min"
+        unique_id: today_price_min
+        unit_of_measurement: "€/kWh"
+        device_class: monetary
+        icon: mdi:arrow-down-bold
+        state: >
+          {% set prices = state_attr('sensor.nord_pool_nl_current_price', 'today') %}
+          {% if prices and prices | length > 0 %}
+            {{ prices | map('float', 0) | min | round(5) }}
+          {% else %}
+            unavailable
+          {% endif %}
+        availability: >
+          {{ state_attr('sensor.nord_pool_nl_current_price', 'today') is not none
+             and states('sensor.price_freshness_ok') == 'true' }}
+
+      - name: "today_price_max"
+        unique_id: today_price_max
+        unit_of_measurement: "€/kWh"
+        device_class: monetary
+        icon: mdi:arrow-up-bold
+        state: >
+          {% set prices = state_attr('sensor.nord_pool_nl_current_price', 'today') %}
+          {% if prices and prices | length > 0 %}
+            {{ prices | map('float', 0) | max | round(5) }}
+          {% else %}
+            unavailable
+          {% endif %}
+        availability: >
+          {{ state_attr('sensor.nord_pool_nl_current_price', 'today') is not none
+             and states('sensor.price_freshness_ok') == 'true' }}
+
+      - name: "today_price_avg"
+        unique_id: today_price_avg
+        unit_of_measurement: "€/kWh"
+        device_class: monetary
+        icon: mdi:approximately-equal
+        state: >
+          {% set prices = state_attr('sensor.nord_pool_nl_current_price', 'today') %}
+          {% if prices and prices | length > 0 %}
+            {% set vals = prices | map('float', 0) | list %}
+            {{ (vals | sum / vals | length) | round(5) }}
+          {% else %}
+            unavailable
+          {% endif %}
+        availability: >
+          {{ state_attr('sensor.nord_pool_nl_current_price', 'today') is not none
+             and states('sensor.price_freshness_ok') == 'true' }}
+
+      - name: "price_rank_today"
+        unique_id: price_rank_today
+        unit_of_measurement: "rank"
+        icon: mdi:sort-numeric-ascending
+        state: >
+          {# 0 = cheapest hour today, 23 = most expensive #}
+          {% set prices = state_attr('sensor.nord_pool_nl_current_price', 'today') %}
+          {% set current = states('sensor.nord_pool_nl_current_price') | float(none) %}
+          {% if prices and prices | length > 0 and current is not none %}
+            {% set sorted = prices | map('float', 0) | sort | list %}
+            {% set cur_f = current | float %}
+            {% set rank = namespace(v=0) %}
+            {% for p in sorted %}
+              {% if p < cur_f %}
+                {% set rank.v = rank.v + 1 %}
+              {% endif %}
+            {% endfor %}
+            {{ rank.v }}
+          {% else %}
+            unknown
+          {% endif %}
+        availability: >
+          {{ state_attr('sensor.nord_pool_nl_current_price', 'today') is not none
+             and states('sensor.price_freshness_ok') == 'true' }}
+
+  - binary_sensor:
+      - name: "is_cheap_hour"
+        unique_id: is_cheap_hour
+        icon: mdi:tag-arrow-down
+        state: >
+          {# True if current price is in the cheapest 25% of today's prices AND data is fresh #}
+          {% if states('sensor.price_freshness_ok') != 'true' %}
+            false
+          {% else %}
+            {% set prices = state_attr('sensor.nord_pool_nl_current_price', 'today') %}
+            {% set current = states('sensor.nord_pool_nl_current_price') | float(none) %}
+            {% if prices and prices | length > 0 and current is not none %}
+              {% set sorted = prices | map('float', 0) | sort | list %}
+              {% set p25_idx = (sorted | length * 0.25) | int %}
+              {% set p25 = sorted[p25_idx] %}
+              {{ current <= p25 }}
+            {% else %}
+              false
+            {% endif %}
+          {% endif %}
+
+      - name: "is_expensive_hour"
+        unique_id: is_expensive_hour
+        icon: mdi:tag-arrow-up
+        state: >
+          {# True if current price is in the most expensive 25% of today's prices AND fresh #}
+          {% if states('sensor.price_freshness_ok') != 'true' %}
+            false
+          {% else %}
+            {% set prices = state_attr('sensor.nord_pool_nl_current_price', 'today') %}
+            {% set current = states('sensor.nord_pool_nl_current_price') | float(none) %}
+            {% if prices and prices | length > 0 and current is not none %}
+              {% set sorted = prices | map('float', 0) | sort | list %}
+              {% set p75_idx = (sorted | length * 0.75) | int %}
+              {% set p75 = sorted[p75_idx] %}
+              {{ current >= p75 }}
+            {% else %}
+              false
+            {% endif %}
+          {% endif %}
+
+      - name: "is_negative_price"
+        unique_id: is_negative_price
+        icon: mdi:currency-eur-off
+        state: >
+          {{ states('sensor.price_freshness_ok') == 'true'
+             and states('sensor.nord_pool_nl_current_price') | float(0) < 0 }}
+
+# ── AIO Energy Management configuration ───────────────────────────────────────
+# Install via HACS: https://github.com/aioenergymanagement/aio-energy-management
+# This creates binary_sensor entities used by battery and appliance automations.
+#
+# DST WARNING: AIO uses price ranking, not fixed times. However, its
+# overnight window spans midnight. On DST transitions the window may shift
+# by 1 hour. Verify manually on last Sunday of March and October.
+aio_energy_management:
+  nordpool_entity: sensor.nord_pool_nl_current_price
+  utility_meter_entity: sensor.daily_grid_import
+
+  schedules:
+    - name: cheapest_4h_overnight
+      type: cheapest_hours
+      num_hours: 4
+      start: "20:00"
+      end: "08:00"
+      failsafe_start: "23:00"
+      binary_sensor_name: cheapest_4h_overnight
+      # Creates: binary_sensor.cheapest_4h_overnight
+      # Failsafe: if Nord Pool data unavailable by 23:00, runs anyway.
+
+    - name: cheapest_6h_any
+      type: cheapest_hours
+      num_hours: 6
+      start: "00:00"
+      end: "23:59"
+      failsafe_start: "02:00"
+      binary_sensor_name: cheapest_6h_any
+      # Creates: binary_sensor.cheapest_6h_any
+
+    - name: most_expensive_4h
+      type: most_expensive_hours
+      num_hours: 4
+      start: "06:00"
+      end: "23:00"
+      binary_sensor_name: most_expensive_4h
+      # Creates: binary_sensor.most_expensive_4h
+
+# ── Automations ────────────────────────────────────────────────────────────────
+automation:
+  - id: price_negative_alert_debounced
+    alias: "Prijs: negatieve prijs melding (debounced)"
+    description: >
+      Sends a notification when the spot price turns negative.
+      Debounced: only fires once per negative-price event (waits for price to
+      go positive again before it can fire again). Not every minute.
+    trigger:
+      - platform: state
+        entity_id: binary_sensor.is_negative_price
+        to: "on"
+    condition:
+      - condition: template
+        value_template: "{{ states('sensor.price_freshness_ok') == 'true' }}"
+    action:
+      - service: !secret notify_target
+        data:
+          title: "💚 Negatieve energieprijs!"
+          message: >
+            Spotprijs nu: {{ states('sensor.nord_pool_nl_current_price') | float(0) | round(4) }} €/kWh.
+            All-in prijs: {{ states('sensor.energy_price_all_in') | float(0) | round(4) }} €/kWh.
+            Overweeg extra verbruik of batterij laden.
+          data:
+            tag: negative_price
+            actions:
+              - action: "FORCE_GRID_CHARGE"
+                title: "Batterij laden"
+    mode: single

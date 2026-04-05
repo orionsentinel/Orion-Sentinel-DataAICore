@@ -1,0 +1,379 @@
+---
+# 05_battery_automations.yaml
+# ──────────────────────────────────────────────────────────────────────────────
+# Battery mode rules — these automations write ONLY to input_select.battery_desired_mode.
+# NEVER write directly to Modbus select entities here.
+# The Mode Executor in 04_battery_state_machine.yaml handles all Modbus writes.
+#
+# FRESHNESS GUARD: Every price-triggered rule checks sensor.price_freshness_ok.
+# If prices are stale, the rule NO-OPs (does not change battery mode).
+#
+# DST NOTE: Time-pattern triggers are used instead of fixed time triggers to
+# avoid DST transition issues (last Sunday March/October NL). Each automation
+# re-evaluates conditions at its trigger time using current real values.
+#
+# PRIORITY ORDER (highest overrides lowest):
+#   FORCE_DISCHARGE > FORCE_CHARGE > GRID_CHARGE > PEAK_DISCHARGE > HOLD > SELF_CONSUME
+# ──────────────────────────────────────────────────────────────────────────────
+
+automation:
+  # ─────────────────────────────────────────────────────────────────────────────
+  # RULE 1 — Negative or very cheap price: activate grid charging
+  # Priority: GRID_CHARGE (overrides SELF_CONSUME, HOLD, PEAK_DISCHARGE)
+  # ─────────────────────────────────────────────────────────────────────────────
+  - id: battery_rule_grid_charge_cheap_price
+    alias: "Batterij regel: laden van net bij lage prijs"
+    description: >
+      Activates GRID_CHARGE when spot price is below battery_charge_price_threshold
+      AND grid charging is allowed AND price data is fresh.
+      DST NOTE: Uses time_pattern at :02 (re-evaluates every hour). Safe for DST.
+    trigger:
+      - platform: time_pattern
+        minutes: "2"
+        # DST safe: fires every hour, evaluates current conditions.
+      - platform: state
+        entity_id: binary_sensor.is_negative_price
+        to: "on"
+      - platform: state
+        entity_id: binary_sensor.cheapest_4h_overnight
+        to: "on"
+    condition:
+      - condition: template
+        value_template: "{{ states('sensor.price_freshness_ok') == 'true' }}"
+      - condition: state
+        entity_id: input_boolean.allow_grid_battery_charge
+        state: "on"
+      - condition: template
+        value_template: >
+          {% set price = states('sensor.nord_pool_nl_current_price') | float(999) %}
+          {% set threshold = states('input_number.battery_charge_price_threshold') | float(0.02) %}
+          {{ price < threshold }}
+      - condition: template
+        value_template: >
+          {% set soc = states('sensor.battery_soc_pct') | float(100) %}
+          {{ soc < 95 }}
+      # Do not override FORCE modes
+      - condition: template
+        value_template: >
+          {{ states('input_select.battery_desired_mode') not in ['FORCE_CHARGE', 'FORCE_DISCHARGE'] }}
+    action:
+      - service: input_select.select_option
+        target:
+          entity_id: input_select.battery_desired_mode
+        data:
+          option: "GRID_CHARGE"
+    mode: single
+
+  - id: battery_rule_grid_charge_stop
+    alias: "Batterij regel: stop laden van net bij hogere prijs"
+    description: >
+      Stops GRID_CHARGE when price rises above threshold or battery is full.
+      Returns to SELF_CONSUME.
+    trigger:
+      - platform: time_pattern
+        minutes: "3"
+      - platform: state
+        entity_id: binary_sensor.cheapest_4h_overnight
+        to: "off"
+    condition:
+      - condition: state
+        entity_id: input_select.battery_desired_mode
+        state: "GRID_CHARGE"
+      - condition: template
+        value_template: >
+          {% set price = states('sensor.nord_pool_nl_current_price') | float(0) %}
+          {% set threshold = states('input_number.battery_charge_price_threshold') | float(0.02) %}
+          {% set soc = states('sensor.battery_soc_pct') | float(100) %}
+          {{ price >= threshold or soc >= 95 }}
+    action:
+      - service: input_select.select_option
+        target:
+          entity_id: input_select.battery_desired_mode
+        data:
+          option: "SELF_CONSUME"
+    mode: single
+
+  # ─────────────────────────────────────────────────────────────────────────────
+  # RULE 2 — Solar producing and price positive: switch to self-consumption
+  # ─────────────────────────────────────────────────────────────────────────────
+  - id: battery_rule_self_consume_solar
+    alias: "Batterij regel: zelfverbruik bij zonne-energie productie"
+    description: >
+      When solar starts producing (>200W debounced) and the spot price is positive,
+      switch to SELF_CONSUME. This overrides GRID_CHARGE (solar is better).
+      DST NOTE: solar_producing uses delay_on=2min, not time trigger — DST safe.
+    trigger:
+      - platform: state
+        entity_id: binary_sensor.solar_producing
+        to: "on"
+      - platform: time_pattern
+        minutes: "3"
+    condition:
+      - condition: state
+        entity_id: binary_sensor.solar_producing
+        state: "on"
+      - condition: template
+        value_template: "{{ states('sensor.price_freshness_ok') == 'true' }}"
+      - condition: template
+        value_template: >
+          {{ states('sensor.nord_pool_nl_current_price') | float(0) > 0 }}
+      - condition: state
+        entity_id: input_select.battery_desired_mode
+        state: "GRID_CHARGE"
+      - condition: template
+        value_template: >
+          {{ states('input_select.battery_desired_mode') not in ['FORCE_CHARGE', 'FORCE_DISCHARGE'] }}
+    action:
+      - service: input_select.select_option
+        target:
+          entity_id: input_select.battery_desired_mode
+        data:
+          option: "SELF_CONSUME"
+    mode: single
+
+  # ─────────────────────────────────────────────────────────────────────────────
+  # RULE 3 — Expensive hour AND battery above minimum: discharge for peak export
+  # ─────────────────────────────────────────────────────────────────────────────
+  - id: battery_rule_peak_discharge
+    alias: "Batterij regel: ontladen tijdens piekprijs"
+    description: >
+      When prices are in the top 25% of today's range AND battery has energy
+      above minimum SOC, activate PEAK_DISCHARGE to sell stored energy.
+      Guard: not active if solar is already producing (solar handles export).
+      DST NOTE: time_pattern at :02, safe for DST transitions.
+    trigger:
+      - platform: time_pattern
+        minutes: "2"
+      - platform: state
+        entity_id: binary_sensor.is_expensive_hour
+        to: "on"
+    condition:
+      - condition: template
+        value_template: "{{ states('sensor.price_freshness_ok') == 'true' }}"
+      - condition: state
+        entity_id: binary_sensor.is_expensive_hour
+        state: "on"
+      - condition: template
+        value_template: >
+          {% set soc = states('sensor.battery_soc_pct') | float(0) %}
+          {% set min_soc = states('input_number.battery_min_soc') | float(20) %}
+          {{ soc > min_soc }}
+      - condition: state
+        entity_id: binary_sensor.solar_producing
+        state: "off"
+        # Solar handles export naturally; only dispatch battery when solar offline
+      - condition: template
+        value_template: >
+          {{ states('input_select.battery_desired_mode') not in ['FORCE_CHARGE', 'FORCE_DISCHARGE', 'GRID_CHARGE'] }}
+    action:
+      - service: input_select.select_option
+        target:
+          entity_id: input_select.battery_desired_mode
+        data:
+          option: "PEAK_DISCHARGE"
+    mode: single
+
+  - id: battery_rule_peak_discharge_stop
+    alias: "Batterij regel: stop ontladen na piekprijs"
+    description: "Returns to SELF_CONSUME when expensive hour ends or battery reaches minimum SOC."
+    trigger:
+      - platform: time_pattern
+        minutes: "4"
+      - platform: state
+        entity_id: binary_sensor.is_expensive_hour
+        to: "off"
+    condition:
+      - condition: state
+        entity_id: input_select.battery_desired_mode
+        state: "PEAK_DISCHARGE"
+      - condition: template
+        value_template: >
+          {% set soc = states('sensor.battery_soc_pct') | float(100) %}
+          {% set min_soc = states('input_number.battery_min_soc') | float(20) %}
+          {{ states('binary_sensor.is_expensive_hour') == 'off' or soc <= min_soc }}
+    action:
+      - service: input_select.select_option
+        target:
+          entity_id: input_select.battery_desired_mode
+        data:
+          option: "SELF_CONSUME"
+    mode: single
+
+  # ─────────────────────────────────────────────────────────────────────────────
+  # RULE 4 — EV is charging: hold battery (protect grid capacity)
+  # ─────────────────────────────────────────────────────────────────────────────
+  - id: battery_rule_hold_during_ev_charge
+    alias: "Batterij regel: HOLD tijdens EV laden"
+    description: >
+      When the Alfen charger draws >500W for >2 minutes, switch battery to HOLD
+      (Charge from PV Only). This prevents the battery from discharging into the
+      EV when grid power is already available and potentially cheaper.
+
+      Uses sensor.alfen_wallbox_active_power_total as the EV presence signal,
+      NOT Tesla SOC (which is unreliable). See docs/TESLA_SETUP.md.
+
+      The HOLD mode maps to "Charge from PV" in SolarEdge Modbus, which
+      stops battery discharge but allows solar charging.
+    trigger:
+      - platform: numeric_state
+        entity_id: sensor.alfen_wallbox_active_power_total
+        above: 500
+        for: "00:02:00"
+    condition:
+      - condition: state
+        entity_id: binary_sensor.battery_available
+        state: "on"
+      - condition: template
+        value_template: >
+          {{ states('input_select.battery_desired_mode') not in ['FORCE_CHARGE', 'FORCE_DISCHARGE'] }}
+    action:
+      - service: input_select.select_option
+        target:
+          entity_id: input_select.battery_desired_mode
+        data:
+          option: "HOLD"
+    mode: single
+
+  # ─────────────────────────────────────────────────────────────────────────────
+  # RULE 5 — EV stops charging: resume self-consumption
+  # ─────────────────────────────────────────────────────────────────────────────
+  - id: battery_rule_resume_after_ev
+    alias: "Batterij regel: herstel na EV laden"
+    description: >
+      When Alfen power drops below 100W for >5 minutes (EV session ended or paused),
+      resume SELF_CONSUME only if the current mode is HOLD.
+      5-minute delay prevents premature resumption during brief charging pauses.
+    trigger:
+      - platform: numeric_state
+        entity_id: sensor.alfen_wallbox_active_power_total
+        below: 100
+        for: "00:05:00"
+    condition:
+      - condition: state
+        entity_id: input_select.battery_desired_mode
+        state: "HOLD"
+      - condition: template
+        value_template: >
+          {{ states('input_select.battery_desired_mode') not in ['FORCE_CHARGE', 'FORCE_DISCHARGE'] }}
+    action:
+      - service: input_select.select_option
+        target:
+          entity_id: input_select.battery_desired_mode
+        data:
+          option: "SELF_CONSUME"
+    mode: single
+
+  # ─────────────────────────────────────────────────────────────────────────────
+  # RULE 6 — Hourly fallback safety reset
+  # ─────────────────────────────────────────────────────────────────────────────
+  - id: battery_rule_hourly_fallback
+    alias: "Batterij regel: uurlijkse veiligheidsreset"
+    description: >
+      Every hour at :05, if we are not in a scheduled cheap or expensive window,
+      reset to SELF_CONSUME. Acts as a safety net against stuck states.
+      Does NOT override FORCE modes or active scheduled modes.
+      DST NOTE: time_pattern used, safe for DST transitions.
+    trigger:
+      - platform: time_pattern
+        minutes: "5"
+    condition:
+      - condition: state
+        entity_id: binary_sensor.cheapest_4h_overnight
+        state: "off"
+      - condition: state
+        entity_id: binary_sensor.most_expensive_4h
+        state: "off"
+      - condition: template
+        value_template: >
+          {{ states('input_select.battery_desired_mode') not in ['FORCE_CHARGE', 'FORCE_DISCHARGE', 'HOLD'] }}
+      - condition: template
+        value_template: >
+          {% set soc = states('sensor.battery_soc_pct') | float(-1) %}
+          {{ soc < 0 or soc >= states('input_number.battery_min_soc') | float(20) }}
+    action:
+      - service: input_select.select_option
+        target:
+          entity_id: input_select.battery_desired_mode
+        data:
+          option: "SELF_CONSUME"
+    mode: single
+
+  # ─────────────────────────────────────────────────────────────────────────────
+  # RULE 7 — Morning forecast gate (runs at 13:30 after D+1 prices published)
+  # ─────────────────────────────────────────────────────────────────────────────
+  - id: battery_rule_morning_forecast_gate
+    alias: "Batterij regel: dagelijkse forecast beslissing"
+    description: >
+      At 13:30 (after Nord Pool publishes D+1 prices at ~13:00-14:00 CET),
+      evaluates tomorrow's solar forecast and adjusts the grid charging permission.
+
+      If tomorrow sunny (forecast > sunny threshold): disable grid charging.
+      If tomorrow cloudy AND SOC < 60%: enable grid charging + notify.
+      If partly cloudy: notify only, leave current setting.
+
+      DST NOTE: This uses a fixed time trigger (13:30). On DST transition days,
+      this may fire at 12:30 or 14:30 solar time — acceptable for a daily decision.
+    trigger:
+      - platform: time
+        at: "13:30:00"
+    condition:
+      - condition: template
+        value_template: "{{ states('sensor.price_freshness_ok') == 'true' }}"
+      - condition: template
+        value_template: >
+          {{ states('sensor.forecast_solar_energy_production_tomorrow') not in ['unavailable', 'unknown', 'none'] }}
+    action:
+      - choose:
+          # Sunny tomorrow → solar will fill battery → no need for grid charge
+          - conditions:
+              - condition: state
+                entity_id: binary_sensor.tomorrow_is_sunny
+                state: "on"
+            sequence:
+              - service: input_boolean.turn_off
+                target:
+                  entity_id: input_boolean.allow_grid_battery_charge
+              - service: !secret notify_target
+                data:
+                  title: "☀️ Zonnige dag morgen verwacht"
+                  message: >
+                    Morgen {{ states('sensor.solar_forecast_tomorrow_kwh') | float(0) | round(1) }} kWh verwacht.
+                    Batterij wordt gevuld door de zon. Net-laden uitgeschakeld.
+
+          # Cloudy tomorrow AND low SOC → enable grid charging
+          - conditions:
+              - condition: state
+                entity_id: binary_sensor.tomorrow_is_sunny
+                state: "off"
+              - condition: template
+                value_template: >
+                  {% if states('sensor.battery_soc_pct') in ['unavailable', 'unknown'] %}
+                    false
+                  {% else %}
+                    {{ states('sensor.battery_soc_pct') | float(100) < 60 }}
+                  {% endif %}
+            sequence:
+              - service: input_boolean.turn_on
+                target:
+                  entity_id: input_boolean.allow_grid_battery_charge
+              - service: !secret notify_target
+                data:
+                  title: "☁️ Bewolkt morgen — net-laden ingeschakeld"
+                  message: >
+                    Morgen slechts {{ states('sensor.solar_forecast_tomorrow_kwh') | float(0) | round(1) }} kWh verwacht.
+                    SoC: {{ states('sensor.battery_soc_pct') | default('onbekend') }}%.
+                    Net-laden ingeschakeld voor goedkope uren vanavond.
+
+          # Partly cloudy → notify only
+          - conditions:
+              - condition: template
+                value_template: >
+                  {{ states('sensor.solar_forecast_category') == 'partly_cloudy' }}
+            sequence:
+              - service: !secret notify_target
+                data:
+                  title: "⛅ Bewolkt met opklaringen morgen"
+                  message: >
+                    Morgen {{ states('sensor.solar_forecast_tomorrow_kwh') | float(0) | round(1) }} kWh verwacht (gedeeltelijk bewolkt).
+                    Net-laden instelling ongewijzigd.
+    mode: single

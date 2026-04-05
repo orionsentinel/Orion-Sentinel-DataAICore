@@ -1,0 +1,284 @@
+---
+# 01_system_watchdogs.yaml
+# ──────────────────────────────────────────────────────────────────────────────
+# System health watchdogs:
+#   1. SolarEdge Modbus unavailability watchdog
+#   2. Alfen Eve API session loss watchdog
+#   3. Nord Pool price freshness watchdog
+#
+# These run independently of all other automations and act as early-warning
+# systems. They also enforce safe fallback states when critical integrations fail.
+# ──────────────────────────────────────────────────────────────────────────────
+
+# ── Shared audit/cooldown helpers ──────────────────────────────────────────────
+input_text:
+  system_last_alert:
+    name: "Systeem: laatste waarschuwing"
+    max: 255
+    icon: mdi:alert-circle-outline
+
+  battery_last_action:
+    name: "Batterij: laatste actie log"
+    max: 255
+    icon: mdi:battery-sync
+
+input_datetime:
+  last_modbus_alert:
+    name: "Modbus: tijdstip laatste melding"
+    has_date: true
+    has_time: true
+
+  last_stale_price_notification:
+    name: "Prijzen: tijdstip laatste verouderingsmelding"
+    has_date: true
+    has_time: true
+
+  last_alfen_alert:
+    name: "Alfen: tijdstip laatste sessiemelding"
+    has_date: true
+    has_time: true
+
+# ── Watchdog automations ───────────────────────────────────────────────────────
+automation:
+  # ─────────────────────────────────────────────────────────────────────────────
+  # WATCHDOG 1 — SolarEdge Modbus unavailable for >10 minutes
+  # ─────────────────────────────────────────────────────────────────────────────
+  - id: watchdog_modbus_unavailable
+    alias: "Watchdog: SolarEdge Modbus verbinding verloren"
+    description: >
+      Triggers when the primary SolarEdge Modbus sensor has been unavailable
+      for 10 consecutive minutes. This means the inverter Modbus TCP connection
+      is lost — likely a WiFi dropout, firmware update, or inverter restart.
+      IMPORTANT: WiFi Modbus is deprecated by SolarEdge. See docs/MODBUS_PROXY.md.
+      On unavailability, forces battery to SELF_CONSUME (safe fallback) and notifies.
+      Cooldown: notifies at most once per hour to prevent spam.
+    trigger:
+      - platform: state
+        entity_id: sensor.solaredge_i1_ac_power
+        to: "unavailable"
+        for: "00:10:00"
+    condition:
+      - condition: template
+        value_template: >
+          {% set last = states('input_datetime.last_modbus_alert') %}
+          {% if last in ['unknown', 'unavailable', 'none'] %}
+            true
+          {% else %}
+            {{ (now() - strptime(last, '%Y-%m-%d %H:%M:%S')).total_seconds() > 3600 }}
+          {% endif %}
+    action:
+      - service: input_datetime.set_datetime
+        target:
+          entity_id: input_datetime.last_modbus_alert
+        data:
+          datetime: "{{ now().strftime('%Y-%m-%d %H:%M:%S') }}"
+      - service: input_text.set_value
+        target:
+          entity_id: input_text.system_last_alert
+        data:
+          value: >
+            {{ now().strftime('%H:%M') }} ⚠️ Modbus verbinding verloren — SolarEdge niet bereikbaar
+      - service: input_select.select_option
+        target:
+          entity_id: input_select.battery_desired_mode
+        data:
+          option: "SELF_CONSUME"
+      - service: !secret notify_target
+        data:
+          title: "⚠️ SolarEdge Modbus verbinding verloren"
+          message: >
+            De SolarEdge omvormer is al 10 minuten niet bereikbaar via Modbus TCP.
+
+            Mogelijke oorzaken:
+            • WiFi verbinding omvormer verbroken (meest waarschijnlijk)
+            • SolarEdge firmware update heeft WiFi Modbus uitgeschakeld (PERMANENT)
+            • Omvormer opnieuw opgestart
+
+            ⚡ Actie: Controleer of de omvormer bereikbaar is op het lokale netwerk.
+            📋 Als dit na firmware update is: zie docs/MODBUS_PROXY.md voor oplossing.
+            🔌 Definitieve oplossing: Ethernet kabel naar de omvormer.
+
+            Batterij ingesteld op veilige stand (SELF_CONSUME).
+          data:
+            tag: modbus_unavailable
+            importance: high
+    mode: single
+
+  - id: watchdog_modbus_recovered
+    alias: "Watchdog: SolarEdge Modbus verbinding hersteld"
+    description: "Notifies when Modbus comes back after being unavailable."
+    trigger:
+      - platform: state
+        entity_id: sensor.solaredge_i1_ac_power
+        from: "unavailable"
+        to: ~
+    condition:
+      - condition: template
+        value_template: >
+          {{ states('sensor.solaredge_i1_ac_power') not in ['unavailable', 'unknown', 'none'] }}
+    action:
+      - service: input_text.set_value
+        target:
+          entity_id: input_text.system_last_alert
+        data:
+          value: >
+            {{ now().strftime('%H:%M') }} ✅ Modbus verbinding hersteld
+      - service: !secret notify_target
+        data:
+          title: "✅ SolarEdge Modbus hersteld"
+          message: >
+            De verbinding met de SolarEdge omvormer is hersteld.
+            Huidig vermogen: {{ states('sensor.solaredge_i1_ac_power') | float(0) | round(0) }} W
+          data:
+            tag: modbus_unavailable
+    mode: single
+
+  # ─────────────────────────────────────────────────────────────────────────────
+  # WATCHDOG 2 — Alfen API session lost
+  # ─────────────────────────────────────────────────────────────────────────────
+  - id: watchdog_alfen_session_lost
+    alias: "Watchdog: Alfen sessie verloren"
+    description: >
+      ⚠️ ALFEN SINGLE-SESSION WARNING ⚠️
+      The Alfen Eve allows only ONE active HTTPS API session at a time.
+      If the Eve Connect app or 50five app is opened while HA has the session,
+      both will fail. This watchdog detects session loss and prompts the user
+      to press the Login button in the Alfen Wallbox integration settings.
+      Cooldown: notifies at most once per 30 minutes.
+    trigger:
+      - platform: state
+        entity_id: binary_sensor.alfen_wallbox_https_api_login_status
+        to: "off"
+        for: "00:01:00"
+    condition:
+      - condition: template
+        value_template: >
+          {% set last = states('input_datetime.last_alfen_alert') %}
+          {% if last in ['unknown', 'unavailable', 'none'] %}
+            true
+          {% else %}
+            {{ (now() - strptime(last, '%Y-%m-%d %H:%M:%S')).total_seconds() > 1800 }}
+          {% endif %}
+    action:
+      - service: input_datetime.set_datetime
+        target:
+          entity_id: input_datetime.last_alfen_alert
+        data:
+          datetime: "{{ now().strftime('%Y-%m-%d %H:%M:%S') }}"
+      - service: input_text.set_value
+        target:
+          entity_id: input_text.system_last_alert
+        data:
+          value: >
+            {{ now().strftime('%H:%M') }} ⚠️ Alfen sessie verloren
+      - service: !secret notify_target
+        data:
+          title: "⚠️ Alfen sessie verloren — Actie vereist"
+          message: >
+            De Alfen Eve laadpaal API sessie is verloren.
+            EV laden wordt NIET automatisch beheerd totdat dit is opgelost.
+
+            🔧 Oplossing:
+            1. Ga naar Instellingen → Integraties → Alfen EV Wallbox
+            2. Klik op het apparaat → Klik op "Login" knop
+            3. Wacht 30 seconden en controleer of de status hersteld is
+
+            ⚠️ Was je de Eve Connect of 50five app aan het gebruiken?
+            Die app verbreekt de HA sessie. Sluit de app en druk op Login in HA.
+
+            Zie docs/ALFEN_WARNING.md voor meer informatie.
+          data:
+            tag: alfen_session_lost
+            actions:
+              - action: "URI"
+                title: "Open integraties"
+                uri: "/config/integrations"
+    mode: single
+
+  - id: watchdog_alfen_session_recovered
+    alias: "Watchdog: Alfen sessie hersteld"
+    description: "Notifies when Alfen API session recovers."
+    trigger:
+      - platform: state
+        entity_id: binary_sensor.alfen_wallbox_https_api_login_status
+        to: "on"
+    condition:
+      - condition: template
+        value_template: >
+          {% set last = states('input_datetime.last_alfen_alert') %}
+          {% if last in ['unknown', 'unavailable', 'none'] %}
+            false
+          {% else %}
+            {{ (now() - strptime(last, '%Y-%m-%d %H:%M:%S')).total_seconds() < 3600 }}
+          {% endif %}
+    action:
+      - service: !secret notify_target
+        data:
+          title: "✅ Alfen sessie hersteld"
+          message: "De Alfen EV laadpaal is weer bereikbaar vanuit Home Assistant."
+          data:
+            tag: alfen_session_lost
+    mode: single
+
+  # ─────────────────────────────────────────────────────────────────────────────
+  # WATCHDOG 3 — Nord Pool price data freshness
+  # ─────────────────────────────────────────────────────────────────────────────
+  - id: watchdog_nordpool_stale_prices
+    alias: "Watchdog: Nord Pool prijzen zijn verouderd"
+    description: >
+      Checks every hour at :15 whether the Nord Pool price sensor has been
+      updated within the last 90 minutes. Stale prices could cause automations
+      to act on wrong data. Cooldown: notifies at most once per 2 hours.
+
+      DST NOTE: This time_pattern trigger fires every hour at :15 local time.
+      On DST transition days (last Sunday March/October NL), HA may skip or
+      double-fire this trigger. This is acceptable for a watchdog.
+    trigger:
+      - platform: time_pattern
+        minutes: "15"
+    condition:
+      - condition: template
+        value_template: >
+          {% if states('sensor.nord_pool_nl_current_price') in ['unavailable', 'unknown'] %}
+            true
+          {% else %}
+            {% set age = (now() - states.sensor.nord_pool_nl_current_price.last_updated).total_seconds() %}
+            {{ age > 5400 }}
+          {% endif %}
+      - condition: template
+        value_template: >
+          {% set last = states('input_datetime.last_stale_price_notification') %}
+          {% if last in ['unknown', 'unavailable', 'none'] %}
+            true
+          {% else %}
+            {{ (now() - strptime(last, '%Y-%m-%d %H:%M:%S')).total_seconds() > 7200 }}
+          {% endif %}
+    action:
+      - service: input_datetime.set_datetime
+        target:
+          entity_id: input_datetime.last_stale_price_notification
+        data:
+          datetime: "{{ now().strftime('%Y-%m-%d %H:%M:%S') }}"
+      - service: input_text.set_value
+        target:
+          entity_id: input_text.system_last_alert
+        data:
+          value: >
+            {{ now().strftime('%H:%M') }} ⚠️ Nordpool prijzen verouderd
+      - service: !secret notify_target
+        data:
+          title: "⚠️ Nord Pool prijzen zijn verouderd"
+          message: >
+            De energieprijzen zijn meer dan 90 minuten oud.
+            Prijsgestuurde automaties zijn tijdelijk gepauzeerd.
+
+            Mogelijke oorzaken:
+            • Tijdelijk netwerk probleem
+            • Nord Pool API niet bereikbaar
+            • HA herstarter na netwerk probleem
+
+            Prijzen worden normaal elke dag rond 13:00-14:00 uur gepubliceerd.
+            Als het nu later dan 15:00 is, controleer dan de Nord Pool integratie.
+          data:
+            tag: stale_prices
+    mode: single

@@ -1,103 +1,147 @@
 # ha-energy-automation
 
-Home Assistant energy automation package for a Dutch household with:
-- **SolarEdge SE10000H** single-phase inverter (~4kWp)
-- **SolarEdge Home Battery 9.7kWh** *(install in progress)*
-- **Dynamic energy contract** (Nord Pool NL spot pricing)
-- **Stedin three-phase grid** with HomeWizard P1 meter
-- **EV charger** (Easee/go-E/Zaptec/Alfen placeholder)
+Production-grade Home Assistant energy automation for a Dutch household:
+
+| Hardware | Status |
+|---|---|
+| SolarEdge SE10000H inverter (~4kWp, south-facing) | ✅ Supported |
+| SolarEdge Home Hub + Home Battery 9.7kWh | ⏳ Coming soon — automations ready |
+| Stedin three-phase grid + HomeWizard P1 HWE-P1 | ✅ Supported |
+| Alfen Eve wallbox (50five, leeyuentuen HACS) | ✅ Supported |
+| Tesla (alandtse HACS or official Fleet API) | ✅ Informational SOC only |
+| Nord Pool NL dynamic contract | ✅ Supported |
+
+---
+
+## ⚠️ Critical Warnings — Read These First
+
+### 1. Run an Ethernet Cable ASAP
+
+SolarEdge is actively removing WiFi Modbus in firmware updates. Your inverter is currently WiFi-only. **The Modbus connection will break** on the next firmware push.
+
+→ **[See docs/MODBUS_PROXY.md](docs/MODBUS_PROXY.md)** — interim proxy workaround + permanent Ethernet fix.
+
+### 2. Alfen Flash Wear
+
+Writing to the Alfen current-limit register in a loop **physically destroys the charger**. This repo uses only the enable/disable switch — never current limits.
+
+→ **[See docs/ALFEN_WARNING.md](docs/ALFEN_WARNING.md)** — full explanation + safe usage rules.
+
+### 3. Tesla SOC is Unreliable
+
+All EV charging decisions use the Alfen power sensor as the primary signal. Tesla SOC is a soft hint in notifications only.
+
+→ **[See docs/TESLA_SETUP.md](docs/TESLA_SETUP.md)**
 
 ---
 
 ## Repository Structure
 
-| Path | Description |
+| File | Description |
 |---|---|
-| `packages/energy_prices.yaml` | Nord Pool sensors, all-in price templates, AIO schedules, price automations |
-| `packages/solaredge.yaml` | SolarEdge Modbus template sensors, binary sensors, utility meters |
-| `packages/battery_control.yaml` | Battery mode automations (7 automations, startup + scheduling + fallback) |
-| `packages/ev_charging.yaml` | Smart EV charging — price, solar excess, departure deadline |
-| `packages/appliances.yaml` | Washer/dishwasher/dryer scheduling based on cheapest overnight hours |
-| `packages/solar_forecast.yaml` | Forecast.Solar integration, cloudy/sunny detection, grid charge decisions |
-| `dashboards/energy_dashboard.yaml` | Full Lovelace dashboard (Mushroom + ApexCharts + Mini Graph Card) |
-| `scripts/reset_battery_mode.yaml` | Three manual battery control scripts |
-| `docs/SETUP.md` | Complete step-by-step setup guide |
-| `docs/NOW_VS_LATER.md` | Pre/post battery install feature table, commissioning checklist |
-| `docs/ENTITY_NAMES.md` | Entity mapping tables, discovery templates, bulk rename commands |
+| `packages/00_secrets_template.yaml` | Template for secrets.yaml |
+| `packages/01_system_watchdogs.yaml` | Modbus/Alfen/price freshness watchdogs |
+| `packages/02_energy_prices.yaml` | Nord Pool sensors, all-in price, AIO schedules |
+| `packages/03_solaredge.yaml` | Modbus template sensors with availability guards |
+| `packages/04_battery_state_machine.yaml` | **Single writer** state machine — sole Modbus writer |
+| `packages/05_battery_automations.yaml` | Rules → input_select only (never direct Modbus) |
+| `packages/06_alfen_ev_charging.yaml` | Flash-safe EV control, SOC-optional |
+| `packages/07_appliances.yaml` | Washer/dishwasher/dryer overnight scheduling |
+| `packages/08_solar_forecast.yaml` | Forecast.Solar integration, grid-charge decisions |
+| `dashboards/energy_dashboard.yaml` | Full Lovelace dashboard |
+| `scripts/battery_mode_override.yaml` | Manual battery force scripts |
+| `scripts/alfen_session_manager.yaml` | Alfen Login/Logout session scripts |
+| `docs/SETUP.md` | Complete 14-step setup guide |
+| `docs/MODBUS_PROXY.md` | WiFi Modbus deprecation + solutions |
+| `docs/ALFEN_WARNING.md` | Flash wear danger + session lock |
+| `docs/TESLA_SETUP.md` | Tesla integration options |
+| `docs/BATTERY_STATE_MACHINE.md` | State machine architecture + debugging |
+| `docs/NOW_VS_LATER.md` | Pre/post battery install feature table |
+| `docs/ENTITY_NAMES.md` | Entity discovery + rename guide |
+| `tests/` | Manual test procedures for all automations |
 
 ---
 
-## Quick Start
+## Quick Start (3 Steps)
 
-### Step 1: Enable Packages in `configuration.yaml`
+### Step 1: Run an Ethernet Cable
+
+See [docs/MODBUS_PROXY.md](docs/MODBUS_PROXY.md). Do this before anything else.
+
+### Step 2: Enable packages in `configuration.yaml`
 
 ```yaml
 homeassistant:
   packages: !include_dir_named packages
 ```
 
-Copy `packages/` to your HA config directory.
+Copy the `packages/` directory to `/config/packages/`.
 
-### Step 2: Install Required Integrations
+### Step 3: Create `secrets.yaml`
 
-| Integration | Type | Purpose |
-|---|---|---|
-| Nord Pool | Official HA | Spot prices (NL) |
-| HomeWizard Energy | Official HA | P1 three-phase meter |
-| Forecast.Solar | Official HA | Solar production forecast |
-| SolarEdge Modbus Multi | HACS | Inverter + battery control |
-| AIO Energy Management | HACS | Cheapest/expensive hour scheduling |
-| Mushroom Cards | HACS Frontend | Dashboard cards |
-| ApexCharts Card | HACS Frontend | Price chart |
-| Mini Graph Card | HACS Frontend | Power history graphs |
+```bash
+cp packages/00_secrets_template.yaml /config/secrets.yaml
+# Edit /config/secrets.yaml with your actual values
+```
 
-### Step 3: Enable Modbus TCP on SE10000H
+Then follow the full [docs/SETUP.md](docs/SETUP.md) guide.
 
-Long-press the LCD button → **Comm → Modbus TCP → Enabled**
+---
 
-Then in HA: **Settings → Integrations → SolarEdge Modbus Multi** (host = inverter IP, port 502).
+## Key Architecture Decision: Battery State Machine
+
+This repo uses a **Single Writer Pattern** for battery control. Seven rule automations evaluate conditions and write to `input_select.battery_desired_mode`. One executor automation translates that to Modbus writes. This eliminates race conditions.
+
+```
+Rule automations → input_select.battery_desired_mode → Mode Executor → Modbus
+```
+
+**Priority:** `FORCE_DISCHARGE > FORCE_CHARGE > GRID_CHARGE > PEAK_DISCHARGE > HOLD > SELF_CONSUME`
+
+→ [docs/BATTERY_STATE_MACHINE.md](docs/BATTERY_STATE_MACHINE.md)
 
 ---
 
 ## Frank Energie vs Tibber vs Nord Pool
 
-| Provider | Recommendation | Notes |
+| Provider | This repo | Notes |
 |---|---|---|
-| **Frank Energie** | ✅ Best for solar households | Offers salderingskorting + transparent pricing; HACS integration available |
-| **Tibber** | Good for EV owners | Strong EV smart charging integration; slightly higher base price |
-| **Nord Pool sensor** | ✅ Used in this package | Provider-agnostic; add energiebelasting + BTW in template (done in `energy_prices.yaml`) |
-
-> This package uses the Nord Pool sensor for automations, making it compatible with any dynamic-pricing contract. If you're on Frank Energie, replace `sensor.nord_pool_nl_current_price` with `sensor.frank_energie_current_price` and remove the tax calculation (Frank prices are all-in).
+| **Frank Energie** (HACS) | Replace `sensor.nord_pool_nl_current_price` with Frank entity | Frank prices are all-in — remove tax formula |
+| **Tibber** (official) | Replace with Tibber price entity | Use `sensor.tibber_price_current` |
+| **Nord Pool** (official HA) | ✅ Used by default | Must add taxes via template (done in `02_energy_prices.yaml`) |
 
 ---
 
-## Entity Placeholders to Replace
+## Required HACS Integrations
 
-Search for `# ← replace` in all YAML files to find all entities that need to be updated for your specific hardware:
+| Integration | Purpose |
+|---|---|
+| SolarEdge Modbus Multi | Inverter + battery Modbus control |
+| AIO Energy Management | Cheapest/most expensive hour scheduling |
+| alfen_wallbox (leeyuentuen) | Alfen Eve control |
+| Mushroom Cards (frontend) | Dashboard cards |
+| ApexCharts Card (frontend) | Price chart |
+| Mini Graph Card (frontend) | Power history |
 
-```bash
-grep -r "← replace" packages/ scripts/
-```
+---
 
-Key replacements:
-- `switch.ev_charger` → your EV charger switch
-- `sensor.ev_state_of_charge` → your EV SoC sensor
-- `binary_sensor.ev_plugged_in` → your EV connected sensor
-- `switch.washing_machine_smart_plug` → your washing machine plug
-- `switch.dishwasher_smart_plug` → your dishwasher plug
-- `switch.dryer_smart_plug` → your dryer plug
-- `notify.mobile_app` → your notification service
+## First Things To Do Checklist
+
+- [ ] Run an Ethernet cable to the inverter (most important — see docs/MODBUS_PROXY.md)
+- [ ] Copy `secrets.yaml.template` → `/config/secrets.yaml` and fill in values
+- [ ] Enable packages in `configuration.yaml`
+- [ ] Install Nord Pool integration (NL, EUR)
+- [ ] Install HomeWizard Energy integration
+- [ ] Install and configure SolarEdge Modbus Multi (HACS)
+- [ ] Install and configure Alfen EV Wallbox (HACS)
+- [ ] Install HACS frontend cards (Mushroom, ApexCharts, Mini Graph Card)
+- [ ] Install AIO Energy Management (HACS)
+- [ ] Replace appliance placeholder entities (`grep -r "← replace" packages/`)
+- [ ] Add dashboard from `dashboards/energy_dashboard.yaml`
+- [ ] Verify no YAML errors: Settings → System → Logs
 
 ---
 
 ## License
 
-MIT License — free to use, modify, and distribute. Attribution appreciated but not required.
-
----
-
-## Documentation
-
-- [Setup Guide](docs/SETUP.md)
-- [Now vs Later (pre/post battery)](docs/NOW_VS_LATER.md)
-- [Entity Names Reference](docs/ENTITY_NAMES.md)
+MIT License — free to use, modify, and distribute.

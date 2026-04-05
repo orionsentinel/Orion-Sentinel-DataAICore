@@ -1,8 +1,10 @@
-# Home Assistant secrets and credentials
+# ── HA secrets and credentials ─────────────────────────────────────────────────
 secrets.yaml
 *.secret
+*.key
+.env
 
-# HA internal storage (not for version control)
+# ── HA internal storage (not for version control) ──────────────────────────────
 .storage/
 home-assistant_v2.db
 home-assistant_v2.db-shm
@@ -10,33 +12,51 @@ home-assistant_v2.db-wal
 home-assistant.log
 home-assistant.log.1
 home-assistant.log.fault
+*.log.*
+OZW_Log.txt
 
-# Custom components and HACS frontend (managed by HACS, not this repo)
+# ── Custom components and HACS (managed by HACS, not this repo) ────────────────
 custom_components/
 www/community/
+www/images/
+blueprints/
 
-# macOS
+# ── HA add-on config and data ───────────────────────────────────────────────────
+share/
+media/
+addons/
+
+# ── macOS ───────────────────────────────────────────────────────────────────────
 .DS_Store
 .AppleDouble
 .LSOverride
+._*
+.Spotlight-V100
+.Trashes
 
-# Windows
+# ── Windows ─────────────────────────────────────────────────────────────────────
 Thumbs.db
 ehthumbs.db
 Desktop.ini
+$RECYCLE.BIN/
 
-# Editor directories
+# ── Linux ───────────────────────────────────────────────────────────────────────
+*~
+
+# ── Editor ─────────────────────────────────────────────────────────────────────
 .idea/
 .vscode/
 *.swp
 *.swo
-*~
 
-# Python
+# ── Python ─────────────────────────────────────────────────────────────────────
 __pycache__/
 *.py[cod]
 *.pyo
+.venv/
+venv/
 
-# Backups
+# ── Backups ─────────────────────────────────────────────────────────────────────
 *.bak
 *.backup
+*.orig
