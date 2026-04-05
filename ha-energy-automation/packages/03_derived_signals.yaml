@@ -1,0 +1,373 @@
+---
+# 03_derived_signals.yaml
+# ──────────────────────────────────────────────────────────────────────────────
+# LAYER 2: Derived / computed signals
+#
+# All sensors in this file are computed from Layer 1 raw sensors (04_solaredge.yaml)
+# and external integrations. Nothing here writes to Modbus or controls hardware.
+#
+# Categories:
+#   A. Power balance and flow sensors
+#   B. Battery state signals
+#   C. Price signals and arbitrage
+#   D. EV and charging signals
+#   E. Decision signals (battery target SOC, charge hours needed)
+#   F. System health signals
+#   G. Rate limiting binary sensors
+# ──────────────────────────────────────────────────────────────────────────────
+
+template:
+  # ── A. Power balance and flow sensors ──────────────────────────────────────
+
+  - sensor:
+      - name: "power_balance_w"
+        unique_id: power_balance_w
+        unit_of_measurement: "W"
+        device_class: power
+        state_class: measurement
+        icon: mdi:scale-balance
+        # Positive = surplus (producing more than consuming)
+        # Negative = deficit (consuming more than producing)
+        state: >
+          {% set solar = states('sensor.solaredge_i1_ac_power') | float(0) %}
+          {% set grid = states('sensor.homewizard_p1_active_power_w') | float(0) %}
+          {{ (solar - grid) | round(0) }}
+        availability: >
+          {{ states('sensor.solaredge_i1_ac_power') not in ['unavailable', 'unknown']
+             and states('sensor.homewizard_p1_active_power_w') not in ['unavailable', 'unknown'] }}
+
+      - name: "solar_self_consumption_pct"
+        unique_id: solar_self_consumption_pct
+        unit_of_measurement: "%"
+        icon: mdi:solar-power
+        state: >
+          {% set solar = states('sensor.solaredge_i1_ac_power') | float(0) %}
+          {% set export = [states('sensor.homewizard_p1_active_power_w') | float(0) * -1, 0] | max %}
+          {% if solar > 50 %}
+            {{ (((solar - export) / solar) * 100) | round(1) }}
+          {% else %}
+            100
+          {% endif %}
+        availability: >
+          {{ states('sensor.solaredge_i1_ac_power') not in ['unavailable', 'unknown']
+             and states('sensor.homewizard_p1_active_power_w') not in ['unavailable', 'unknown'] }}
+
+  # ── B. Battery state signals ────────────────────────────────────────────────
+
+  - sensor:
+      - name: "battery_charge_rate_w"
+        unique_id: battery_charge_rate_w
+        unit_of_measurement: "W"
+        device_class: power
+        state_class: measurement
+        icon: mdi:battery-charging
+        # Positive = charging, Negative = discharging
+        state: >
+          {{ states('sensor.solaredge_b1_dc_power') | float(0) | round(0) }}
+        availability: >
+          {{ states('sensor.solaredge_b1_dc_power') not in ['unavailable', 'unknown'] }}
+
+      - name: "battery_soc_pct"
+        unique_id: battery_soc_pct
+        unit_of_measurement: "%"
+        state_class: measurement
+        icon: mdi:battery
+        state: >
+          {{ states('sensor.solaredge_b1_soc') | float(0) | round(1) }}
+        availability: >
+          {{ states('sensor.solaredge_b1_soc') not in ['unavailable', 'unknown'] }}
+
+      - name: "battery_energy_available_kwh"
+        unique_id: battery_energy_available_kwh
+        unit_of_measurement: "kWh"
+        device_class: energy
+        state_class: measurement
+        icon: mdi:battery-medium
+        # Available energy above minimum SOC. Usable capacity = 9.7 kWh.
+        state: >
+          {% set soc = states('sensor.solaredge_b1_soc') | float(0) %}
+          {% set min_soc = states('input_number.battery_min_soc') | float(20) %}
+          {% set capacity_kwh = 9.7 %}
+          {% set usable_pct = [soc - min_soc, 0] | max %}
+          {{ (usable_pct / 100 * capacity_kwh) | round(2) }}
+        availability: >
+          {{ states('sensor.solaredge_b1_soc') not in ['unavailable', 'unknown'] }}
+
+  - binary_sensor:
+      - name: "battery_low"
+        unique_id: battery_low
+        device_class: battery
+        state: >
+          {% set soc = states('sensor.solaredge_b1_soc') | float(100) %}
+          {% set min_soc = states('input_number.battery_min_soc') | float(20) %}
+          {{ soc <= min_soc }}
+        availability: >
+          {{ states('sensor.solaredge_b1_soc') not in ['unavailable', 'unknown'] }}
+
+      - name: "battery_nearly_full"
+        unique_id: battery_nearly_full
+        icon: mdi:battery-high
+        state: >
+          {{ states('sensor.solaredge_b1_soc') | float(0) >= 90 }}
+        availability: >
+          {{ states('sensor.solaredge_b1_soc') not in ['unavailable', 'unknown'] }}
+
+      - name: "solar_producing"
+        unique_id: solar_producing
+        device_class: power
+        delay_on: "00:02:00"
+        state: >
+          {{ states('sensor.solaredge_i1_ac_power') | float(0) > 50 }}
+        availability: >
+          {{ states('sensor.solaredge_i1_ac_power') not in ['unavailable', 'unknown'] }}
+
+      - name: "exporting_to_grid"
+        unique_id: exporting_to_grid
+        icon: mdi:transmission-tower-export
+        state: >
+          {{ states('sensor.homewizard_p1_active_power_w') | float(0) < -50 }}
+        availability: >
+          {{ states('sensor.homewizard_p1_active_power_w') not in ['unavailable', 'unknown'] }}
+
+  # ── C. Price signals and arbitrage ─────────────────────────────────────────
+
+  - sensor:
+      - name: "price_spread_today"
+        unique_id: price_spread_today
+        unit_of_measurement: "€/kWh"
+        device_class: monetary
+        icon: mdi:chart-bell-curve-cumulative
+        # Today's price spread = max - min spot price.
+        # Guards battery arbitrage — only cycle if spread > arbitrage_min_spread.
+        state: >
+          {% set prices = state_attr('sensor.nord_pool_nl_current_price', 'today') %}
+          {% if prices and prices | length > 0 %}
+            {% set vals = prices | map('float', 0) | list %}
+            {{ ((vals | max) - (vals | min)) | round(5) }}
+          {% else %}
+            0
+          {% endif %}
+        availability: >
+          {{ state_attr('sensor.nord_pool_nl_current_price', 'today') is not none
+             and states('sensor.price_freshness_ok') == 'true' }}
+
+      - name: "daily_energy_cost_eur"
+        unique_id: daily_energy_cost_eur
+        unit_of_measurement: "€"
+        device_class: monetary
+        state_class: total_increasing
+        icon: mdi:cash-multiple
+        # Approximation: daily grid import kWh × average all-in price today.
+        # Not perfectly accurate (price varies hourly) but useful for trend monitoring.
+        state: >
+          {% set import_kwh = states('sensor.daily_grid_import') | float(0) %}
+          {% set avg_price = states('sensor.today_price_avg') | float(0) %}
+          {% set eb = 0.1228 %}
+          {% set network = states('input_number.network_tariff') | float(0.04) %}
+          {% set vat = 1.21 %}
+          {% set all_in_avg = (avg_price + eb + network) * vat %}
+          {{ (import_kwh * all_in_avg) | round(2) }}
+        availability: >
+          {{ states('sensor.daily_grid_import') not in ['unavailable', 'unknown']
+             and states('sensor.today_price_avg') not in ['unavailable', 'unknown'] }}
+
+  - binary_sensor:
+      - name: "arbitrage_opportunity"
+        unique_id: arbitrage_opportunity
+        icon: mdi:chart-line-variant
+        state: >
+          {% set spread = states('sensor.price_spread_today') | float(0) %}
+          {% set min_spread = states('input_number.arbitrage_min_spread') | float(0.10) %}
+          {% set fresh = states('sensor.price_freshness_ok') == 'true' %}
+          {{ fresh and spread >= min_spread }}
+        # True = today's price spread is large enough to justify battery cycling.
+        # Battery GRID_CHARGE and PEAK_DISCHARGE rules check this before acting.
+        # Exception: negative prices always trigger GRID_CHARGE regardless of spread.
+
+  # ── D. EV and charging signals ──────────────────────────────────────────────
+
+  - sensor:
+      - name: "ev_soc_display"
+        unique_id: ev_soc_display
+        unit_of_measurement: "%"
+        icon: mdi:car-electric
+        # Shows Tesla SOC if available, otherwise shows manual input.
+        # ⚠️ NEVER use this as primary signal for charging decisions.
+        # Only use for display and notification messages.
+        state: >
+          {% set tesla = states('sensor.tesla_battery_level') %}
+          {% if tesla not in ['unavailable', 'unknown', 'none'] %}
+            {{ tesla | int(0) }}
+          {% else %}
+            {{ states('input_number.ev_soc_manual') | int(0) }}
+          {% endif %}
+        attributes:
+          source: >
+            {% if states('sensor.tesla_battery_level') not in ['unavailable', 'unknown', 'none'] %}
+              tesla_cloud
+            {% else %}
+              manual_input
+            {% endif %}
+
+      - name: "ev_charge_hours_needed"
+        unique_id: ev_charge_hours_needed
+        unit_of_measurement: "h"
+        icon: mdi:clock-plus
+        # Estimated hours to charge from current SOC to target SOC.
+        # Used by EV scheduler to determine charge window length.
+        # Formula: (target - current) / 100 × capacity_kWh / charger_kW
+        state: >
+          {% set soc = states('sensor.ev_soc_display') | float(0) %}
+          {% set target = states('input_number.ev_target_soc') | float(80) %}
+          {% set capacity = states('input_number.ev_battery_capacity_kwh') | float(75) %}
+          {% set charger_kw = states('input_number.ev_charger_power_kw') | float(11) %}
+          {% set pct_needed = [target - soc, 0] | max %}
+          {% if charger_kw > 0 %}
+            {{ (pct_needed / 100 * capacity / charger_kw) | round(1) }}
+          {% else %}
+            0
+          {% endif %}
+
+  - binary_sensor:
+      - name: "alfen_car_connected"
+        unique_id: alfen_car_connected
+        device_class: plug
+        state: >
+          {% set status = states('sensor.alfen_wallbox_status_code') %}
+          {{ status not in ['unavailable', 'unknown', 'A', 'A1', 'A2'] }}
+        # Status A = no vehicle. B/C/D/E = vehicle present.
+
+      - name: "ev_actually_charging"
+        unique_id: ev_actually_charging
+        device_class: battery_charging
+        state: >
+          {{ states('sensor.alfen_wallbox_active_power_total') | float(0) > 200 }}
+        availability: >
+          {{ states('sensor.alfen_wallbox_active_power_total') not in ['unavailable', 'unknown'] }}
+
+      - name: "ev_needs_emergency_charge"
+        unique_id: ev_needs_emergency_charge
+        icon: mdi:car-emergency
+        state: >
+          {% set soc = states('sensor.ev_soc_display') | float(100) %}
+          {% set min_soc = states('input_number.ev_minimum_soc') | float(20) %}
+          {% set connected = is_state('binary_sensor.alfen_car_connected', 'on') %}
+          {{ connected and soc < min_soc }}
+
+  # ── E. Decision signals ─────────────────────────────────────────────────────
+
+  - sensor:
+      - name: "battery_target_soc"
+        unique_id: battery_target_soc
+        unit_of_measurement: "%"
+        icon: mdi:battery-sync
+        # Dynamic target SOC based on solar forecast and price spread.
+        # Used by battery_automations (06) to avoid over-charging from grid.
+        # Priority:
+        #   1. Negative price → 95% (charge as much as possible, it's free)
+        #   2. Cloudy forecast + high spread → 80% (charge extra for arbitrage)
+        #   3. Moderate forecast or moderate spread → 50% (balanced)
+        #   4. Sunny forecast → 30% (solar will fill it, no need for grid charge)
+        state: >
+          {% set is_negative = is_state('binary_sensor.is_negative_price', 'on') %}
+          {% set forecast = states('sensor.solar_forecast_category') %}
+          {% set spread = states('sensor.price_spread_today') | float(0) %}
+          {% set min_spread = states('input_number.arbitrage_min_spread') | float(0.10) %}
+          {% if is_negative %}
+            95
+          {% elif forecast == 'cloudy' and spread >= min_spread %}
+            80
+          {% elif forecast == 'sunny' %}
+            30
+          {% else %}
+            50
+          {% endif %}
+        attributes:
+          reason: >
+            {% set is_negative = is_state('binary_sensor.is_negative_price', 'on') %}
+            {% set forecast = states('sensor.solar_forecast_category') %}
+            {% set spread = states('sensor.price_spread_today') | float(0) %}
+            {% set min_spread = states('input_number.arbitrage_min_spread') | float(0.10) %}
+            {% if is_negative %}
+              Negatieve prijs — maximaal laden
+            {% elif forecast == 'cloudy' and spread >= min_spread %}
+              Bewolkt + hoge spreiding — extra laden voor arbitrage
+            {% elif forecast == 'sunny' %}
+              Zonnig voorspeld — beperkt laden, zon vult op
+            {% else %}
+              Gemiddeld scenario
+            {% endif %}
+
+  # ── F. System health signals ────────────────────────────────────────────────
+
+  - sensor:
+      - name: "system_health_status"
+        unique_id: system_health_status
+        icon: mdi:heart-pulse
+        state: >
+          {% set modbus_ok = is_state('binary_sensor.modbus_available', 'on') %}
+          {% set p1_ok = is_state('binary_sensor.p1_available', 'on') %}
+          {% set price_ok = states('sensor.price_freshness_ok') == 'true' %}
+          {% set alfen_ok = is_state('binary_sensor.alfen_wallbox_https_api_login_status', 'on') %}
+          {% set automation_on = is_state('input_boolean.energy_automation_enabled', 'on') %}
+          {% if not automation_on %}
+            GESTOPT
+          {% elif not modbus_ok %}
+            FOUT_MODBUS
+          {% elif not p1_ok %}
+            FOUT_P1
+          {% elif not price_ok %}
+            FOUT_PRIJZEN
+          {% elif not alfen_ok %}
+            WAARSCHUWING_ALFEN
+          {% else %}
+            OK
+          {% endif %}
+        attributes:
+          modbus_ok: "{{ is_state('binary_sensor.modbus_available', 'on') }}"
+          p1_ok: "{{ is_state('binary_sensor.p1_available', 'on') }}"
+          price_fresh: "{{ states('sensor.price_freshness_ok') == 'true' }}"
+          alfen_logged_in: "{{ is_state('binary_sensor.alfen_wallbox_https_api_login_status', 'on') }}"
+          automation_enabled: "{{ is_state('input_boolean.energy_automation_enabled', 'on') }}"
+
+  - binary_sensor:
+      - name: "missing_data_flag"
+        unique_id: missing_data_flag
+        device_class: problem
+        state: >
+          {% set modbus_ok = is_state('binary_sensor.modbus_available', 'on') %}
+          {% set p1_ok = is_state('binary_sensor.p1_available', 'on') %}
+          {% set price_ok = states('sensor.price_freshness_ok') == 'true' %}
+          {{ not (modbus_ok and p1_ok and price_ok) }}
+        # True = one or more critical data sources is unavailable.
+        # Dashboard shows alert when this is on.
+
+  # ── G. Rate limiting binary sensors ────────────────────────────────────────
+
+  - binary_sensor:
+      - name: "battery_change_allowed"
+        unique_id: battery_change_allowed
+        icon: mdi:battery-clock
+        state: >
+          {% set last = states('input_datetime.battery_last_mode_change') %}
+          {% if last in ['unknown', 'unavailable', 'none', '1970-01-01 00:00:00'] %}
+            true
+          {% else %}
+            {{ (now() - strptime(last, '%Y-%m-%d %H:%M:%S')).total_seconds() > 300 }}
+          {% endif %}
+        # True = at least 5 minutes since last battery mode change.
+        # Battery executor checks this before writing to Modbus.
+        # FORCE modes bypass this check (handled in executor logic).
+
+      - name: "alfen_change_allowed"
+        unique_id: alfen_change_allowed
+        icon: mdi:ev-station
+        state: >
+          {% set last = states('input_datetime.alfen_last_change') %}
+          {% if last in ['unknown', 'unavailable', 'none', '1970-01-01 00:00:00'] %}
+            true
+          {% else %}
+            {{ (now() - strptime(last, '%Y-%m-%d %H:%M:%S')).total_seconds() > 600 }}
+          {% endif %}
+        # True = at least 10 minutes since last Alfen enable/disable.
+        # Protects EEPROM from excessive write cycles. See docs/ALFEN_WARNING.md.

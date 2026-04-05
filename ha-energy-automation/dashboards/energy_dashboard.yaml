@@ -1,513 +1,522 @@
 ---
 # energy_dashboard.yaml
-# Full Lovelace energy dashboard
-# Requires HACS frontend cards: Mushroom, ApexCharts Card, Mini Graph Card
-# Paste in HA: Settings → Dashboards → [dashboard] → Edit → Raw configuration editor
+# ──────────────────────────────────────────────────────────────────────────────
+# Energie Dashboard — Lovelace YAML
+# Vereiste HACS frontend cards:
+#   - Mushroom Cards (lovelace-mushroom)
+#   - ApexCharts Card (apexcharts-card)
+#   - Mini Graph Card (mini-graph-card)
+#
+# Om toe te voegen: Instellingen → Dashboards → + Toevoegen → YAML configuratie
+# Kopieer de inhoud van dit bestand naar de raw YAML editor.
+# ──────────────────────────────────────────────────────────────────────────────
 
-title: Energie
-path: energy
-icon: mdi:solar-power
+title: "Energie"
+path: energie
+icon: mdi:lightning-bolt
 views:
-  - title: Overzicht
+  - title: "Overzicht"
     path: overview
     type: sections
     max_columns: 3
     sections:
 
-      # ─────────────────────────────────────────────────────────────────────────
-      # Section 1: Status chips
-      # ─────────────────────────────────────────────────────────────────────────
+      # ═════════════════════════════════════════════════════════════════════════
+      # SECTION 1 — Kill switch + systeem gezondheid (bovenaan — altijd zichtbaar)
+      # ═════════════════════════════════════════════════════════════════════════
+      - type: grid
+        column_span: 3
+        cards:
+          - type: horizontal-stack
+            cards:
+              # Kill switch toggle — GROOT en prominent bovenaan
+              - type: custom:mushroom-entity-card
+                entity: input_boolean.energy_automation_enabled
+                name: "Automaties AAN/UIT"
+                icon: mdi:lightning-bolt-circle
+                layout: horizontal
+                tap_action:
+                  action: toggle
+
+              # Systeem gezondheid status
+              - type: custom:mushroom-template-card
+                primary: >
+                  {% set status = states('sensor.system_health_status') %}
+                  {% if status == 'OK' %}Systeem OK
+                  {% elif status == 'GESTOPT' %}Automaties gestopt
+                  {% elif status == 'FOUT_MODBUS' %}Modbus fout
+                  {% elif status == 'FOUT_P1' %}P1 meter fout
+                  {% elif status == 'FOUT_PRIJZEN' %}Prijzen verouderd
+                  {% elif status == 'WAARSCHUWING_ALFEN' %}Alfen sessie verloren
+                  {% else %}{{ status }}{% endif %}
+                secondary: >
+                  {% if is_state('binary_sensor.missing_data_flag', 'on') %}
+                    Gegevens ontbreken — automaties geblokkeerd
+                  {% else %}
+                    Alle bronnen beschikbaar
+                  {% endif %}
+                icon: >
+                  {% set status = states('sensor.system_health_status') %}
+                  {% if status == 'OK' %}mdi:check-circle
+                  {% elif status == 'GESTOPT' %}mdi:pause-circle
+                  {% else %}mdi:alert-circle{% endif %}
+                icon_color: >
+                  {% set status = states('sensor.system_health_status') %}
+                  {% if status == 'OK' %}green
+                  {% elif status == 'GESTOPT' %}blue
+                  {% else %}red{% endif %}
+                layout: horizontal
+                tap_action:
+                  action: more-info
+                  entity: sensor.system_health_status
+
+      # ═════════════════════════════════════════════════════════════════════════
+      # SECTION 2 — Status chips
+      # ═════════════════════════════════════════════════════════════════════════
       - type: grid
         column_span: 3
         cards:
           - type: custom:mushroom-chips-card
             alignment: center
             chips:
-              - type: template
-                icon: mdi:solar-power-variant
-                icon_color: >
-                  {% if states('sensor.solar_production_kw') | float(0) > 2 %}amber
-                  {% elif states('sensor.solar_production_kw') | float(0) > 0.2 %}yellow
-                  {% else %}grey{% endif %}
-                content: "{{ states('sensor.solar_production_kw') | float(0) | round(2) }} kW"
-                tap_action:
-                  action: more-info
-                  entity: sensor.solar_production_kw
-
-              - type: template
-                icon: >
-                  {% set soc = states('sensor.battery_soc_pct') | float(-1) %}
-                  {% if soc < 0 %}mdi:battery-unknown
-                  {% elif soc > 90 %}mdi:battery
-                  {% elif soc > 70 %}mdi:battery-80
-                  {% elif soc > 50 %}mdi:battery-60
-                  {% elif soc > 30 %}mdi:battery-40
-                  {% elif soc > 10 %}mdi:battery-20
-                  {% else %}mdi:battery-alert{% endif %}
-                icon_color: >
-                  {% set soc = states('sensor.battery_soc_pct') | float(-1) %}
-                  {% if soc < 0 %}grey
-                  {% elif soc > 60 %}green
-                  {% elif soc > 25 %}yellow
-                  {% else %}red{% endif %}
-                content: >
-                  {% set soc = states('sensor.battery_soc_pct') %}
-                  {% if soc in ['unavailable', 'unknown'] %}Batterij N/B
-                  {% else %}{{ soc | float | round(0) }}%{% endif %}
-                tap_action:
-                  action: more-info
-                  entity: sensor.battery_soc_pct
-
+              # Huidige prijs
               - type: template
                 icon: mdi:currency-eur
                 icon_color: >
-                  {% set p = states('sensor.energy_price_all_in') | float(0) %}
-                  {% if p < 0 %}green
-                  {% elif p < 0.15 %}light-green
-                  {% elif p < 0.25 %}yellow
-                  {% elif p < 0.35 %}orange
-                  {% else %}red{% endif %}
+                  {% if is_state('binary_sensor.is_negative_price', 'on') %}green
+                  {% elif is_state('binary_sensor.is_cheap_hour', 'on') %}light-green
+                  {% elif is_state('binary_sensor.is_expensive_hour', 'on') %}red
+                  {% else %}yellow{% endif %}
                 content: >
-                  {% set p = states('sensor.energy_price_all_in') %}
-                  {% if p in ['unavailable', 'unknown'] %}Prijs N/B
-                  {% else %}{{ p | float | round(3) }} €{% endif %}
+                  € {{ states('sensor.energy_price_all_in') | float(0) | round(3) }}/kWh
+                  {% if is_state('binary_sensor.is_negative_price', 'on') %} 💚
+                  {% elif is_state('binary_sensor.is_cheap_hour', 'on') %} 🟢
+                  {% elif is_state('binary_sensor.is_expensive_hour', 'on') %} 🔴
+                  {% else %} 🟡{% endif %}
                 tap_action:
                   action: more-info
                   entity: sensor.energy_price_all_in
 
+              # Batterij modus
+              - type: entity
+                entity: input_select.battery_desired_mode
+                icon: mdi:battery-sync
+
+              # Batterij SoC + doel
               - type: template
-                icon: mdi:transmission-tower
+                icon: mdi:battery
                 icon_color: >
-                  {% set g = states('sensor.grid_power_w') | float(0) %}
-                  {% if g < -100 %}green
-                  {% elif g > 500 %}red
-                  {% else %}blue{% endif %}
+                  {% set soc = states('sensor.solaredge_b1_soc') | float(0) %}
+                  {% if soc > 60 %}green{% elif soc > 30 %}yellow{% else %}red{% endif %}
                 content: >
-                  {% set g = states('sensor.grid_power_w') | float(0) %}
-                  {% if g < -100 %}↑ {{ (g * -1) | round(0) }}W
-                  {% elif g > 100 %}↓ {{ g | round(0) }}W
-                  {% else %}≈0 W{% endif %}
+                  {{ states('sensor.solaredge_b1_soc') | float(0) | round(0) }}%
+                  (doel: {{ states('sensor.battery_target_soc') | default('?') }}%)
                 tap_action:
                   action: more-info
-                  entity: sensor.grid_power_w
+                  entity: sensor.solaredge_b1_soc
 
+              # Arbitrage kans
               - type: template
-                icon: mdi:ev-plug-type2
+                icon: >
+                  {% if is_state('binary_sensor.arbitrage_opportunity', 'on') %}
+                    mdi:chart-line-variant
+                  {% else %}
+                    mdi:chart-flat{% endif %}
                 icon_color: >
-                  {% set status = states('sensor.alfen_wallbox_status') %}
-                  {% if status in ['unavailable', 'unknown'] %}grey
-                  {% elif states('binary_sensor.ev_actually_charging') == 'on' %}blue
-                  {% elif states('binary_sensor.alfen_car_connected') == 'on' %}green
+                  {% if is_state('binary_sensor.arbitrage_opportunity', 'on') %}green
                   {% else %}grey{% endif %}
                 content: >
-                  {% set pwr = states('sensor.alfen_wallbox_active_power_total') | float(0) %}
-                  {% if states('binary_sensor.ev_actually_charging') == 'on' %}
-                    {{ (pwr / 1000) | round(1) }} kW
-                  {% elif states('binary_sensor.alfen_car_connected') == 'on' %}
-                    Ingeplugd
+                  {% if is_state('binary_sensor.arbitrage_opportunity', 'on') %}
+                    Arbitrage: {{ states('sensor.price_spread_today') | float(0) | round(3) }}€
                   {% else %}
-                    Geen auto
+                    Geen arbitrage
                   {% endif %}
                 tap_action:
                   action: more-info
-                  entity: sensor.alfen_wallbox_active_power_total
+                  entity: binary_sensor.arbitrage_opportunity
 
+              # EV status
               - type: template
-                icon: mdi:connection
+                icon: mdi:car-electric
                 icon_color: >
-                  {% if states('binary_sensor.modbus_available') == 'on' %}green
-                  {% else %}red{% endif %}
+                  {% if is_state('binary_sensor.ev_actually_charging', 'on') %}green
+                  {% elif is_state('binary_sensor.alfen_car_connected', 'on') %}blue
+                  {% else %}grey{% endif %}
                 content: >
-                  {% if states('binary_sensor.modbus_available') == 'on' %}Modbus OK
-                  {% else %}⚠️ Modbus OFFLINE{% endif %}
-                tap_action:
-                  action: more-info
-                  entity: binary_sensor.modbus_available
+                  EV {{ states('sensor.ev_soc_display') | int(0) }}%
+                  {% if is_state('binary_sensor.ev_actually_charging', 'on') %} ⚡{% endif %}
 
-      # ─────────────────────────────────────────────────────────────────────────
-      # Section 2: Power flow cards
-      # ─────────────────────────────────────────────────────────────────────────
+              # Prijzen vers
+              - type: template
+                icon: mdi:clock-check
+                icon_color: >
+                  {% if states('sensor.price_freshness_ok') == 'true' %}green{% else %}red{% endif %}
+                content: >
+                  {% if states('sensor.price_freshness_ok') == 'true' %}Prijzen vers{% else %}⚠️ Prijzen oud{% endif %}
+
+      # ═════════════════════════════════════════════════════════════════════════
+      # SECTION 3 — Vermogen huidig (3 kolommen)
+      # ═════════════════════════════════════════════════════════════════════════
       - type: grid
         column_span: 1
         cards:
           - type: custom:mushroom-template-card
-            primary: Zonne-energie
-            secondary: "{{ states('sensor.solar_production_kw') | float(0) | round(2) }} kW"
-            icon: mdi:solar-power-variant
+            primary: "Zonne-energie"
+            secondary: >
+              {{ states('sensor.solaredge_i1_ac_power') | float(0) | round(0) }} W
+            icon: mdi:solar-power
             icon_color: >
-              {% if states('binary_sensor.solar_producing') == 'on' %}amber
+              {% set power = states('sensor.solaredge_i1_ac_power') | float(0) %}
+              {% if power > 5000 %}amber
+              {% elif power > 1000 %}yellow
+              {% elif power > 50 %}light-green
               {% else %}grey{% endif %}
-            badge_icon: >
-              {% if states('binary_sensor.exporting_to_grid') == 'on' %}mdi:transmission-tower-export
-              {% endif %}
-            badge_color: green
             tap_action:
               action: more-info
-              entity: sensor.solar_production_kw
+              entity: sensor.solaredge_i1_ac_power
 
       - type: grid
         column_span: 1
         cards:
           - type: custom:mushroom-template-card
-            primary: Batterij
+            primary: "Net"
             secondary: >
-              {% set soc = states('sensor.battery_soc_pct') %}
-              {% if soc in ['unavailable', 'unknown'] %}
-                Niet geïnstalleerd
-              {% else %}
-                {{ soc | float | round(0) }}% — {{ states('sensor.battery_status') }}
-              {% endif %}
-            icon: mdi:battery-sync
-            icon_color: >
-              {% set mode = states('input_select.battery_desired_mode') %}
-              {% if mode == 'GRID_CHARGE' or mode == 'FORCE_CHARGE' %}blue
-              {% elif mode == 'PEAK_DISCHARGE' or mode == 'FORCE_DISCHARGE' %}orange
-              {% elif mode == 'HOLD' %}yellow
-              {% else %}green{% endif %}
-            tap_action:
-              action: more-info
-              entity: input_select.battery_desired_mode
-
-      - type: grid
-        column_span: 1
-        cards:
-          - type: custom:mushroom-template-card
-            primary: Net
-            secondary: >
-              {% set g = states('sensor.grid_power_w') | float(0) %}
-              {% if g > 100 %}Import: {{ g | round(0) }} W
-              {% elif g < -100 %}Export: {{ (g * -1) | round(0) }} W
+              {% set power = states('sensor.homewizard_p1_active_power_w') | float(0) %}
+              {% if power > 0 %}Import: {{ power | round(0) }} W
+              {% elif power < 0 %}Export: {{ (power * -1) | round(0) }} W
               {% else %}Geen uitwisseling{% endif %}
             icon: mdi:transmission-tower
             icon_color: >
-              {% set g = states('sensor.grid_power_w') | float(0) %}
-              {% if g < -100 %}green
-              {% elif g > 500 %}red
+              {% set power = states('sensor.homewizard_p1_active_power_w') | float(0) %}
+              {% if power > 500 %}red
+              {% elif power < -500 %}green
               {% else %}blue{% endif %}
             tap_action:
               action: more-info
-              entity: sensor.grid_power_w
+              entity: sensor.homewizard_p1_active_power_w
 
-      # ─────────────────────────────────────────────────────────────────────────
-      # Section 3: Price chart (ApexCharts)
-      # ─────────────────────────────────────────────────────────────────────────
+      - type: grid
+        column_span: 1
+        cards:
+          - type: custom:mushroom-template-card
+            primary: "Batterij"
+            secondary: >
+              SoC: {{ states('sensor.solaredge_b1_soc') | float(0) | round(0) }}%
+              {% set power = states('sensor.solaredge_b1_dc_power') | float(0) | round(0) %}
+              {% if power > 50 %} (laden +{{ power }}W)
+              {% elif power < -50 %} (ontladen {{ power }}W){% endif %}
+            icon: >
+              {% set soc = states('sensor.solaredge_b1_soc') | float(0) %}
+              {% if soc > 80 %}mdi:battery-high
+              {% elif soc > 50 %}mdi:battery-medium
+              {% elif soc > 20 %}mdi:battery-low
+              {% else %}mdi:battery-alert{% endif %}
+            icon_color: >
+              {% set soc = states('sensor.solaredge_b1_soc') | float(0) %}
+              {% if soc > 60 %}green{% elif soc > 30 %}yellow{% else %}red{% endif %}
+            tap_action:
+              action: more-info
+              entity: sensor.solaredge_b1_soc
+
+      # ═════════════════════════════════════════════════════════════════════════
+      # SECTION 4 — Prijs grafiek
+      # ═════════════════════════════════════════════════════════════════════════
       - type: grid
         column_span: 3
         cards:
           - type: custom:apexcharts-card
             header:
+              title: "Energieprijzen (all-in €/kWh)"
               show: true
-              title: "Energieprijzen — spotprijs vandaag + morgen"
               show_states: true
-              colorize_states: true
-            now:
-              show: true
-              label: Nu
-              color: red
             graph_span: 36h
             span:
-              start: day
+              start: hour
+              offset: "-12h"
+            now:
+              show: true
+              label: "Nu"
             series:
-              - entity: sensor.nord_pool_nl_current_price
-                name: Spotprijs (€/kWh)
-                type: column
-                data_generator: |
-                  const today = entity.attributes.today ?? [];
-                  const tomorrow = entity.attributes.tomorrow ?? [];
-                  const start = new Date();
-                  start.setHours(0, 0, 0, 0);
-                  return [...today, ...tomorrow].map((price, i) => [
-                    start.getTime() + i * 3600000,
-                    price != null ? parseFloat(price.toFixed(4)) : null
-                  ]);
-                color_threshold:
-                  - value: -0.01
-                    color: '#00c853'
-                  - value: 0.10
-                    color: '#69f0ae'
-                  - value: 0.20
-                    color: '#ffeb3b'
-                  - value: 0.30
-                    color: '#ff9800'
-                  - value: 0.40
-                    color: '#f44336'
-                unit: €/kWh
               - entity: sensor.energy_price_all_in
-                name: All-in prijs
+                name: "All-in prijs"
+                type: column
+                color: "#3498db"
+                opacity: 0.85
+                extend_to: false
+              - entity: sensor.nord_pool_nl_current_price
+                name: "Spotprijs"
                 type: line
-                color: '#9c27b0'
+                color: "#e74c3c"
                 stroke_width: 2
-                unit: €/kWh
+                extend_to: false
+            yaxis:
+              - id: price
+                decimals: 3
+                title: "€/kWh"
+            apex_config:
+              chart:
+                height: 220
+              plotOptions:
+                bar:
+                  columnWidth: 95%
 
-      # ─────────────────────────────────────────────────────────────────────────
-      # Section 4: Power history graphs
-      # ─────────────────────────────────────────────────────────────────────────
+      # ═════════════════════════════════════════════════════════════════════════
+      # SECTION 5 — Batterijbeheer (2 kolommen)
+      # ═════════════════════════════════════════════════════════════════════════
       - type: grid
         column_span: 2
         cards:
-          - type: custom:mini-graph-card
-            name: Zonnepaneel productie (W)
-            icon: mdi:solar-power
-            entities:
-              - entity: sensor.solar_production_w
-                name: AC productie
-                color: '#ffb300'
-            hours_to_show: 12
-            points_per_hour: 6
-            line_color: '#ffb300'
-            line_width: 2
-            hour24: true
-            show:
-              labels: true
-              points: false
-              fill: true
-              extrema: true
-
-          - type: custom:mini-graph-card
-            name: Huisverbruik (W)
-            icon: mdi:home-lightning-bolt
-            entities:
-              - entity: sensor.house_consumption_w
-                name: Totaal
-                color: '#7e57c2'
-              - entity: sensor.house_consumption_excl_ev_w
-                name: Excl. EV
-                color: '#ab47bc'
-                show_state: false
-            hours_to_show: 12
-            points_per_hour: 6
-            line_width: 2
-            hour24: true
-            show:
-              labels: true
-              points: false
-              fill: true
-
-      # ─────────────────────────────────────────────────────────────────────────
-      # Section 5: Battery state machine status
-      # ─────────────────────────────────────────────────────────────────────────
-      - type: grid
-        column_span: 3
-        cards:
           - type: entities
-            title: Batterijbeheer
+            title: "Batterijbeheer"
             icon: mdi:battery-sync
             entities:
               - entity: input_select.battery_desired_mode
-                name: Gewenste modus
-              - entity: sensor.battery_active_reason
-                name: Reden
-              - entity: input_text.battery_last_action
-                name: Laatste actie log
-              - type: divider
-              - entity: select.solaredge_i1_storage_control_mode
-                name: "Modbus: besturingsmodus"
-              - entity: select.solaredge_i1_storage_default_mode
-                name: "Modbus: standaard modus"
-              - type: divider
+                name: "Gewenste modus"
+              - entity: sensor.battery_mode_reason
+                name: "Reden"
+              - entity: sensor.battery_target_soc
+                name: "Doel SoC (dynamisch)"
+              - entity: sensor.battery_energy_available_kwh
+                name: "Beschikbare energie"
               - entity: input_boolean.allow_grid_battery_charge
-                name: Net-naar-batterij laden toegestaan
-                toggle: true
+                name: "Laden van net toegestaan"
+              - entity: binary_sensor.arbitrage_opportunity
+                name: "Arbitrage kans"
+              - entity: sensor.price_spread_today
+                name: "Prijsspreiding vandaag"
+              - entity: binary_sensor.battery_change_allowed
+                name: "Wijziging toegestaan (5min rate limit)"
               - entity: input_number.battery_charge_price_threshold
-                name: Laadprijsdrempel (spot €/kWh)
+                name: "Laad drempel spot"
               - entity: input_number.battery_min_soc
-                name: Minimum SoC (%)
-              - type: section
-                label: Batterijscripts
+                name: "Minimum SoC"
+              - entity: input_number.arbitrage_min_spread
+                name: "Min. arbitrage spreiding"
+
+      - type: grid
+        column_span: 1
+        cards:
+          - type: vertical-stack
+            cards:
               - type: button
-                name: Reset naar zelfverbruik
-                action_name: RESET
+                name: "SELF CONSUME"
+                icon: mdi:battery-sync
                 tap_action:
                   action: call-service
                   service: script.reset_battery_to_self_consumption
               - type: button
-                name: Forceer laden (1u)
-                action_name: LADEN
+                name: "FORCE CHARGE 1h"
+                icon: mdi:battery-charging
                 tap_action:
                   action: call-service
-                  service: script.force_battery_charge_from_grid
-                  service_data:
-                    duration_minutes: 60
+                  service: script.force_battery_charge_1h
               - type: button
-                name: Forceer ontladen (2u)
-                action_name: ONTLADEN
+                name: "HOLD"
+                icon: mdi:battery-lock
+                tap_action:
+                  action: call-service
+                  service: script.hold_battery
+              - type: button
+                name: "FORCE DISCHARGE"
+                icon: mdi:battery-arrow-down
                 tap_action:
                   action: call-service
                   service: script.force_battery_discharge
-                  service_data:
-                    duration_minutes: 120
 
-      # ─────────────────────────────────────────────────────────────────────────
-      # Section 6: Daily totals
-      # ─────────────────────────────────────────────────────────────────────────
+      # ═════════════════════════════════════════════════════════════════════════
+      # SECTION 6 — EV laden
+      # ═════════════════════════════════════════════════════════════════════════
       - type: grid
         column_span: 2
         cards:
           - type: entities
-            title: Dagelijkse totalen
-            icon: mdi:chart-bar
+            title: "EV Laden"
+            icon: mdi:car-electric
             entities:
-              - entity: sensor.daily_solar_production
-                name: Zonnepanelen vandaag
-                icon: mdi:solar-power
-              - entity: sensor.daily_grid_import
-                name: Netimport vandaag
-                icon: mdi:transmission-tower-import
-              - entity: sensor.daily_grid_export
-                name: Netexport vandaag
-                icon: mdi:transmission-tower-export
-              - type: divider
-              - entity: sensor.energy_price_all_in
-                name: Huidig all-in tarief
-              - entity: sensor.nord_pool_nl_current_price
-                name: Huidig spotprijs
-              - entity: sensor.today_price_min
-                name: Dagminimum spotprijs
-              - entity: sensor.today_price_max
-                name: Dagmaximum spotprijs
-              - entity: sensor.price_rank_today
-                name: Prijsrank (0=goedkoopst)
-              - entity: sensor.price_freshness_ok
-                name: Prijsdata vers
-              - type: divider
-              - entity: binary_sensor.cheapest_4h_overnight
-                name: Goedkope nachtperiode actief
-              - entity: binary_sensor.most_expensive_4h
-                name: Piekprijsperiode actief
-
-      # ─────────────────────────────────────────────────────────────────────────
-      # Section 7: EV Charging
-      # ─────────────────────────────────────────────────────────────────────────
-      - type: grid
-        column_span: 2
-        cards:
-          - type: entities
-            title: EV Laden (Alfen Eve)
-            icon: mdi:ev-plug-type2
-            entities:
-              - entity: switch.alfen_wallbox_availability_manager
-                name: Laden ingeschakeld
-                toggle: true
-              - entity: sensor.alfen_wallbox_status
-                name: Laadpaal status
-              - entity: sensor.alfen_wallbox_active_power_total
-                name: Huidig laadvermogen (W)
               - entity: binary_sensor.alfen_car_connected
-                name: Auto ingeplugd
-              - entity: binary_sensor.alfen_wallbox_https_api_login_status
-                name: API sessie actief
-              - type: divider
+                name: "Auto aangesloten"
+              - entity: binary_sensor.ev_actually_charging
+                name: "Aan het laden"
+              - entity: sensor.alfen_wallbox_active_power_total
+                name: "Laadvermogen"
+              - entity: sensor.alfen_wallbox_energy_session_kwh
+                name: "Energie deze sessie"
+              - entity: sensor.ev_soc_display
+                name: "EV SoC"
+              - entity: sensor.ev_charge_hours_needed
+                name: "Laaduren nodig"
               - entity: input_boolean.ev_smart_charging_enabled
-                name: Slim laden ingeschakeld
-                toggle: true
+                name: "Slim laden aan"
               - entity: input_boolean.ev_charge_override
-                name: Altijd laden (overschrijving)
-                toggle: true
-              - entity: input_number.ev_charge_price_threshold
-                name: EV prijsdrempel (spot €/kWh)
+                name: "Handmatig override"
+              - entity: binary_sensor.alfen_change_allowed
+                name: "Wijziging toegestaan (10min rate limit)"
+              - entity: input_number.ev_target_soc
+                name: "Doel SoC"
+              - entity: input_number.ev_minimum_soc
+                name: "Minimum SoC (nood)"
               - entity: input_datetime.ev_departure_time
-                name: Vertrekkttijd
-              - type: divider
-              - entity: sensor.tesla_soc_if_available
-                name: Tesla SoC (informatie-only)
-              - type: section
-                label: Alfen sessie scripts
-              - type: button
-                name: Sessie vrijgeven (voor app)
-                action_name: VRIJGEVEN
-                tap_action:
-                  action: call-service
-                  service: script.alfen_release_session
-              - type: button
-                name: Sessie terugvorderen
-                action_name: TERUG
-                tap_action:
-                  action: call-service
-                  service: script.alfen_reclaim_session
+                name: "Vertrektijd"
 
-      # ─────────────────────────────────────────────────────────────────────────
-      # Section 8: Appliance scheduling
-      # ─────────────────────────────────────────────────────────────────────────
       - type: grid
         column_span: 1
         cards:
           - type: entities
-            title: Apparaten schema
+            title: "Alfen Sessie"
+            icon: mdi:ev-station
+            entities:
+              - entity: binary_sensor.alfen_wallbox_https_api_login_status
+                name: "Sessie actief"
+              - type: button
+                name: "Sessie vrijgeven"
+                icon: mdi:lock-open
+                tap_action:
+                  action: call-service
+                  service: script.alfen_release_session
+              - type: button
+                name: "Sessie terugvorderen"
+                icon: mdi:lock
+                tap_action:
+                  action: call-service
+                  service: script.alfen_reclaim_session
+
+      # ═════════════════════════════════════════════════════════════════════════
+      # SECTION 7 — Apparaten + Zonne-energie prognose
+      # ═════════════════════════════════════════════════════════════════════════
+      - type: grid
+        column_span: 1
+        cards:
+          - type: entities
+            title: "Apparaten"
             icon: mdi:washing-machine
             entities:
-              - entity: input_boolean.appliances_smart_scheduling
-                name: Slim schema
-                toggle: true
-              - type: divider
-              - entity: input_boolean.washing_machine_pending
-                name: Wasmachine inplannen
-                toggle: true
-              - entity: input_boolean.dishwasher_pending
-                name: Vaatwasser inplannen
-                toggle: true
-              - entity: input_boolean.dryer_pending
-                name: Droger inplannen
-                toggle: true
-              - type: divider
-              - entity: switch.washing_machine_smart_plug
-                name: Wasmachine stekker
-                toggle: true
-              - entity: switch.dishwasher_smart_plug
-                name: Vaatwasser stekker
-                toggle: true
-              - entity: switch.dryer_smart_plug
-                name: Droger stekker
-                toggle: true
+              - entity: binary_sensor.cheapest_4h_overnight
+                name: "Goedkoopste 4u actief"
+              - entity: input_boolean.washer_overnight_queued
+                name: "Wasmachine gepland"
+              - entity: input_boolean.dishwasher_overnight_queued
+                name: "Vaatwasser gepland"
+              - entity: input_boolean.dryer_overnight_queued
+                name: "Droger gepland"
 
-      # ─────────────────────────────────────────────────────────────────────────
-      # Section 9: Solar forecast
-      # ─────────────────────────────────────────────────────────────────────────
+      - type: grid
+        column_span: 2
+        cards:
+          - type: entities
+            title: "Zonne-energie Prognose"
+            icon: mdi:weather-sunny
+            entities:
+              - entity: sensor.solar_forecast_tomorrow_kwh
+                name: "Prognose morgen (kWh)"
+              - entity: sensor.solar_forecast_category
+                name: "Categorie"
+              - entity: binary_sensor.battery_will_fill_naturally
+                name: "Batterij vult vanzelf"
+              - entity: sensor.battery_grid_topup_needed_kwh
+                name: "Net aanvulling nodig (kWh)"
+              - entity: binary_sensor.good_solar_day_today
+                name: "Goede zondag vandaag"
+
+      # ═════════════════════════════════════════════════════════════════════════
+      # SECTION 8 — Dagelijkse statistieken
+      # ═════════════════════════════════════════════════════════════════════════
       - type: grid
         column_span: 3
         cards:
-          - type: custom:mushroom-chips-card
-            alignment: center
-            chips:
-              - type: template
-                icon: mdi:weather-sunny
-                icon_color: >
-                  {% if states('binary_sensor.good_solar_day_today') == 'on' %}amber
-                  {% else %}grey{% endif %}
-                content: >
-                  Vandaag: {{ states('sensor.forecast_solar_energy_production_today') | float(0) | round(1) }} kWh
+          - type: horizontal-stack
+            cards:
+              - type: custom:mushroom-template-card
+                primary: "Vandaag opgewekt"
+                secondary: >
+                  {{ states('sensor.daily_solar_production') | float(0) | round(2) }} kWh
+                icon: mdi:solar-power
+                icon_color: yellow
 
-              - type: template
-                icon: >
-                  {% set cat = states('sensor.solar_forecast_category') %}
-                  {% if cat == 'sunny' %}mdi:weather-sunny
-                  {% elif cat == 'partly_cloudy' %}mdi:weather-partly-cloudy
-                  {% else %}mdi:weather-cloudy{% endif %}
-                icon_color: >
-                  {% set cat = states('sensor.solar_forecast_category') %}
-                  {% if cat == 'sunny' %}amber
-                  {% elif cat == 'partly_cloudy' %}yellow
-                  {% else %}blue-grey{% endif %}
-                content: >
-                  Morgen: {{ states('sensor.solar_forecast_tomorrow_kwh') | float(0) | round(1) }} kWh
-                  ({{ states('sensor.solar_forecast_category') }})
+              - type: custom:mushroom-template-card
+                primary: "Net import"
+                secondary: >
+                  {{ states('sensor.daily_grid_import') | float(0) | round(2) }} kWh
+                icon: mdi:transmission-tower-import
+                icon_color: red
 
-              - type: template
-                icon: mdi:battery-charging
-                icon_color: >
-                  {% if states('input_boolean.allow_grid_battery_charge') == 'on' %}green
-                  {% else %}grey{% endif %}
-                content: >
-                  Net-laden: {% if states('input_boolean.allow_grid_battery_charge') == 'on' %}AAN{% else %}UIT{% endif %}
-                tap_action:
-                  action: toggle
-                  entity: input_boolean.allow_grid_battery_charge
+              - type: custom:mushroom-template-card
+                primary: "Net export"
+                secondary: >
+                  {{ states('sensor.daily_grid_export') | float(0) | round(2) }} kWh
+                icon: mdi:transmission-tower-export
+                icon_color: green
 
-              - type: template
-                icon: mdi:alert-circle
-                icon_color: >
-                  {% if states('input_text.system_last_alert') | length > 0 %}orange
-                  {% else %}grey{% endif %}
-                content: "Systeemstatus"
-                tap_action:
-                  action: more-info
-                  entity: input_text.system_last_alert
+              - type: custom:mushroom-template-card
+                primary: "EV geladen"
+                secondary: >
+                  {{ states('sensor.daily_ev_charged') | float(0) | round(2) }} kWh
+                icon: mdi:car-electric
+                icon_color: blue
+
+              - type: custom:mushroom-template-card
+                primary: "Energiekosten (est.)"
+                secondary: >
+                  € {{ states('sensor.daily_energy_cost_eur') | float(0) | round(2) }}
+                icon: mdi:cash
+                icon_color: purple
+
+      # ═════════════════════════════════════════════════════════════════════════
+      # SECTION 9 — Vermogens geschiedenis (Mini Graph)
+      # ═════════════════════════════════════════════════════════════════════════
+      - type: grid
+        column_span: 3
+        cards:
+          - type: custom:mini-graph-card
+            entities:
+              - entity: sensor.solaredge_i1_ac_power
+                name: "Zon"
+                color: "#f1c40f"
+              - entity: sensor.homewizard_p1_active_power_w
+                name: "Net (pos=import)"
+                color: "#e74c3c"
+              - entity: sensor.solaredge_b1_dc_power
+                name: "Batterij (pos=laden)"
+                color: "#2ecc71"
+              - entity: sensor.alfen_wallbox_active_power_total
+                name: "EV"
+                color: "#3498db"
+            name: "Vermogen afgelopen 6 uur"
+            hours_to_show: 6
+            points_per_hour: 12
+            line_width: 2
+            smoothing: true
+            show:
+              labels: false
+              points: false
+              legend: true
+
+      # ═════════════════════════════════════════════════════════════════════════
+      # SECTION 10 — Systeemgezondheid detail
+      # ═════════════════════════════════════════════════════════════════════════
+      - type: grid
+        column_span: 3
+        cards:
+          - type: entities
+            title: "Systeem Gezondheid"
+            icon: mdi:heart-pulse
+            entities:
+              - entity: sensor.system_health_status
+                name: "Status"
+              - entity: binary_sensor.missing_data_flag
+                name: "Gegevens ontbreken"
+              - entity: binary_sensor.modbus_available
+                name: "Modbus verbinding"
+              - entity: binary_sensor.p1_available
+                name: "P1 meter"
+              - entity: binary_sensor.alfen_available
+                name: "Alfen verbinding"
+              - entity: binary_sensor.battery_hardware_available
+                name: "Batterij hardware"
+              - entity: sensor.price_freshness_ok
+                name: "Prijzen vers"
+              - entity: input_text.system_last_alert
+                name: "Laatste systeemmelding"
+              - entity: input_text.battery_last_action
+                name: "Laatste batterijactie"
+              - entity: input_text.ev_last_action
+                name: "Laatste EV actie"

@@ -1,0 +1,270 @@
+---
+# 08_appliances.yaml
+# ──────────────────────────────────────────────────────────────────────────────
+# Smart appliance scheduling: washer, dishwasher, dryer
+#
+# Strategy: run appliances during the cheapest 4-hour overnight window
+# (binary_sensor.cheapest_4h_overnight from AIO Energy Management).
+#
+# ALL automations check input_boolean.energy_automation_enabled (kill switch).
+# When kill switch is off, NO appliance notifications are sent.
+#
+# ENTITY NAMES: Replace the ← replace placeholders with your actual entity IDs.
+# See docs/ENTITY_NAMES.md for guidance on finding entity names.
+# Run: grep -r "← replace" packages/08_appliances.yaml
+# ──────────────────────────────────────────────────────────────────────────────
+
+# ── Appliance helpers ──────────────────────────────────────────────────────────
+input_boolean:
+  washer_overnight_queued:
+    name: "Wasmachine: gepland voor nacht"
+    icon: mdi:washing-machine
+    initial: false
+    # Set to true via dashboard or automation to queue washer for overnight run.
+
+  dishwasher_overnight_queued:
+    name: "Vaatwasser: gepland voor nacht"
+    icon: mdi:dishwasher
+    initial: false
+    # Set to true via dashboard or automation to queue dishwasher for overnight run.
+
+  dryer_overnight_queued:
+    name: "Droger: gepland voor nacht"
+    icon: mdi:tumble-dryer
+    initial: false
+    # Set to true via dashboard or automation to queue dryer for overnight run.
+
+# ── Appliance automations ──────────────────────────────────────────────────────
+automation:
+  # ─────────────────────────────────────────────────────────────────────────────
+  # Washer: start during cheapest window
+  # ─────────────────────────────────────────────────────────────────────────────
+  - id: washer_start_cheap_window
+    alias: "Wasmachine: starten in goedkoopste uren"
+    description: >
+      Starts the washer when the cheapest overnight window begins (AIO binary sensor).
+      Only if washer_overnight_queued is on and time is between 20:00-08:00.
+      Kill switch required.
+    trigger:
+      - platform: state
+        entity_id: binary_sensor.cheapest_4h_overnight
+        to: "on"
+    condition:
+      - condition: state
+        entity_id: input_boolean.energy_automation_enabled
+        state: "on"
+      - condition: state
+        entity_id: input_boolean.washer_overnight_queued
+        state: "on"
+      - condition: time
+        after: "20:00:00"
+        before: "08:00:00"
+    action:
+      - service: input_boolean.turn_off
+        target:
+          entity_id: input_boolean.washer_overnight_queued
+      - service: switch.turn_on
+        target:
+          entity_id: switch.wasmachine_smart_plug  # ← replace with your washer switch entity
+      - service: !secret notify_target
+        data:
+          title: "🫧 Wasmachine gestart"
+          message: >
+            Wasmachine gestart in goedkoopste uur.
+            Stroomprijs: {{ states('sensor.energy_price_all_in') | float(0) | round(3) }} €/kWh
+          data:
+            tag: washer_started
+    mode: single
+
+  # ─────────────────────────────────────────────────────────────────────────────
+  # Dishwasher: start during cheapest window
+  # ─────────────────────────────────────────────────────────────────────────────
+  - id: dishwasher_start_cheap_window
+    alias: "Vaatwasser: starten in goedkoopste uren"
+    description: >
+      Starts the dishwasher when the cheapest overnight window begins.
+      Only if dishwasher_overnight_queued is on and time is between 20:00-08:00.
+      Kill switch required.
+    trigger:
+      - platform: state
+        entity_id: binary_sensor.cheapest_4h_overnight
+        to: "on"
+    condition:
+      - condition: state
+        entity_id: input_boolean.energy_automation_enabled
+        state: "on"
+      - condition: state
+        entity_id: input_boolean.dishwasher_overnight_queued
+        state: "on"
+      - condition: time
+        after: "20:00:00"
+        before: "08:00:00"
+    action:
+      - service: input_boolean.turn_off
+        target:
+          entity_id: input_boolean.dishwasher_overnight_queued
+      - service: switch.turn_on
+        target:
+          entity_id: switch.vaatwasser_smart_plug  # ← replace with your dishwasher switch entity
+      - service: !secret notify_target
+        data:
+          title: "🍽️ Vaatwasser gestart"
+          message: >
+            Vaatwasser gestart in goedkoopste uur.
+            Stroomprijs: {{ states('sensor.energy_price_all_in') | float(0) | round(3) }} €/kWh
+          data:
+            tag: dishwasher_started
+    mode: single
+
+  # ─────────────────────────────────────────────────────────────────────────────
+  # Dryer: start 2 hours after cheapest window (washer first, dryer follows)
+  # ─────────────────────────────────────────────────────────────────────────────
+  - id: dryer_start_after_washer
+    alias: "Droger: starten 2 uur na goedkoopste uren"
+    description: >
+      Starts the dryer 2 hours after the cheapest window begins.
+      This gives the washer time to finish first.
+      Only if dryer_overnight_queued is on.
+      Kill switch required.
+    trigger:
+      - platform: state
+        entity_id: binary_sensor.cheapest_4h_overnight
+        to: "on"
+    condition:
+      - condition: state
+        entity_id: input_boolean.energy_automation_enabled
+        state: "on"
+      - condition: state
+        entity_id: input_boolean.dryer_overnight_queued
+        state: "on"
+      - condition: time
+        after: "20:00:00"
+        before: "06:00:00"
+    action:
+      - delay: "02:00:00"
+      - condition: state
+        entity_id: input_boolean.energy_automation_enabled
+        state: "on"
+        # Re-check kill switch after delay.
+      - service: input_boolean.turn_off
+        target:
+          entity_id: input_boolean.dryer_overnight_queued
+      - service: switch.turn_on
+        target:
+          entity_id: switch.droger_smart_plug  # ← replace with your dryer switch entity
+      - service: !secret notify_target
+        data:
+          title: "💨 Droger gestart"
+          message: >
+            Droger gestart (2 uur na wasmachine).
+            Stroomprijs: {{ states('sensor.energy_price_all_in') | float(0) | round(3) }} €/kWh
+          data:
+            tag: dryer_started
+    mode: single
+
+  # ─────────────────────────────────────────────────────────────────────────────
+  # Morning reset: clear all overnight queues at 09:00
+  # ─────────────────────────────────────────────────────────────────────────────
+  - id: appliances_morning_reset
+    alias: "Apparaten: reset planningen om 09:00"
+    description: >
+      Clears all overnight queue booleans at 09:00 to ensure a clean state
+      for the new day. Prevents appliances from starting unexpectedly if they
+      were queued but the window was missed.
+    trigger:
+      - platform: time
+        at: "09:00:00"
+    action:
+      - service: input_boolean.turn_off
+        target:
+          entity_id:
+            - input_boolean.washer_overnight_queued
+            - input_boolean.dishwasher_overnight_queued
+            - input_boolean.dryer_overnight_queued
+    mode: single
+
+  # ─────────────────────────────────────────────────────────────────────────────
+  # Evening prompt: remind user at 20:30 to queue appliances
+  # ─────────────────────────────────────────────────────────────────────────────
+  - id: appliances_evening_prompt
+    alias: "Apparaten: avondherinnering om 20:30"
+    description: >
+      If no appliances are queued at 20:30, prompts user to queue them for
+      overnight running during cheap price hours.
+      Only triggers when kill switch is on and price data is fresh.
+    trigger:
+      - platform: time
+        at: "20:30:00"
+    condition:
+      - condition: state
+        entity_id: input_boolean.energy_automation_enabled
+        state: "on"
+      - condition: template
+        value_template: >
+          {{ not is_state('input_boolean.washer_overnight_queued', 'on')
+             and not is_state('input_boolean.dishwasher_overnight_queued', 'on')
+             and not is_state('input_boolean.dryer_overnight_queued', 'on') }}
+      - condition: template
+        value_template: "{{ states('sensor.price_freshness_ok') == 'true' }}"
+    action:
+      - service: !secret notify_target
+        data:
+          title: "🌙 Goedkoopste uren plannen"
+          message: >
+            Goedkoopste uren vanavond actief van AIO.
+            Wil je apparaten inplannen?
+
+            Prijs nu: {{ states('sensor.energy_price_all_in') | float(0) | round(3) }} €/kWh
+            Goedkoopste: {{ states('sensor.today_price_min') | float(0) | round(3) }} €/kWh (spot)
+          data:
+            tag: appliance_prompt
+            actions:
+              - action: "QUEUE_WASHER"
+                title: "Wasmachine"
+              - action: "QUEUE_DISHWASHER"
+                title: "Vaatwasser"
+              - action: "QUEUE_DRYER"
+                title: "Droger"
+    mode: single
+
+  # ─────────────────────────────────────────────────────────────────────────────
+  # Notification action handlers
+  # ─────────────────────────────────────────────────────────────────────────────
+  - id: appliances_notification_action_washer
+    alias: "Apparaten: actie wasmachine inplannen"
+    trigger:
+      - platform: event
+        event_type: mobile_app_notification_action
+        event_data:
+          action: QUEUE_WASHER
+    action:
+      - service: input_boolean.turn_on
+        target:
+          entity_id: input_boolean.washer_overnight_queued
+    mode: single
+
+  - id: appliances_notification_action_dishwasher
+    alias: "Apparaten: actie vaatwasser inplannen"
+    trigger:
+      - platform: event
+        event_type: mobile_app_notification_action
+        event_data:
+          action: QUEUE_DISHWASHER
+    action:
+      - service: input_boolean.turn_on
+        target:
+          entity_id: input_boolean.dishwasher_overnight_queued
+    mode: single
+
+  - id: appliances_notification_action_dryer
+    alias: "Apparaten: actie droger inplannen"
+    trigger:
+      - platform: event
+        event_type: mobile_app_notification_action
+        event_data:
+          action: QUEUE_DRYER
+    action:
+      - service: input_boolean.turn_on
+        target:
+          entity_id: input_boolean.dryer_overnight_queued
+    mode: single

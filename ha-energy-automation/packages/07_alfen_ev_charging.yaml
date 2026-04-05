@@ -1,0 +1,399 @@
+---
+# 07_alfen_ev_charging.yaml
+# ──────────────────────────────────────────────────────────────────────────────
+# ⚠️ CRITICAL SAFETY WARNING — READ BEFORE MODIFYING ⚠️
+#
+# The Alfen Eve wallbox has a flash/EEPROM wear issue on register 2129_0.
+# Writing to current-limit registers in a loop PHYSICALLY DESTROYS the charger.
+# This file uses ONLY the enable/disable switch — NEVER current limit registers.
+#
+# Flash-safe operations (ALLOWED):
+#   switch.alfen_wallbox_availability_manager — enable/disable charging
+#
+# Forbidden operations (NEVER USE — causes flash wear):
+#   number.alfen_wallbox_max_station_current — FLASH WEAR, hardware damage
+#   service: number.set_value targeting Alfen current limits — FLASH WEAR
+#
+# Rate limiting: minimum 10 minutes between enable/disable operations.
+# This is enforced via input_datetime.alfen_last_change + binary_sensor.alfen_change_allowed.
+#
+# See docs/ALFEN_WARNING.md for full explanation.
+# ──────────────────────────────────────────────────────────────────────────────
+#
+# EV SCHEDULER INTEGRATION:
+# jonasbkarlsson/ev_smart_charging is the PRIMARY EV scheduler.
+# Install via HACS: https://github.com/jonasbkarlsson/ev_smart_charging
+# Configure entirely via UI — no YAML configuration required.
+#
+# This package provides:
+#   1. Tesla SOC sync → input_number.ev_soc_manual (fallback when cloud unavailable)
+#   2. Safety automations that rate-limit Alfen enable/disable
+#   3. Solar excess absorption (enable charging when exporting >1kW for >5 min)
+#   4. Emergency charge (if SOC < minimum on departure day)
+#   5. Evening reminder notification
+# ──────────────────────────────────────────────────────────────────────────────
+
+# ── EV charging helpers ────────────────────────────────────────────────────────
+input_number:
+  ev_target_soc:
+    name: "EV: doel SoC"
+    min: 20
+    max: 100
+    step: 5
+    unit_of_measurement: "%"
+    icon: mdi:battery-charging-high
+    initial: 80
+    # Target SOC for smart charging. jonasbkarlsson uses this as its target.
+    # 80% for daily use. 100% for long trips.
+
+  ev_minimum_soc:
+    name: "EV: minimum SoC (noodladen drempel)"
+    min: 5
+    max: 50
+    step: 5
+    unit_of_measurement: "%"
+    icon: mdi:battery-alert
+    initial: 20
+    # Below this SOC, emergency charging activates regardless of price.
+
+  ev_soc_manual:
+    name: "EV: handmatig SoC (als Tesla niet beschikbaar)"
+    min: 0
+    max: 100
+    step: 1
+    unit_of_measurement: "%"
+    icon: mdi:car-electric
+    initial: 50
+    # Updated automatically from Tesla when cloud API is available.
+    # Set manually when Tesla API is unavailable or not integrated.
+    # ⚠️ This is a FALLBACK only — Alfen power sensor is primary charging signal.
+
+  ev_battery_capacity_kwh:
+    name: "EV: batterijcapaciteit (kWh)"
+    min: 20
+    max: 120
+    step: 0.5
+    unit_of_measurement: "kWh"
+    icon: mdi:battery
+    initial: 75
+    # Used for ev_charge_hours_needed calculation in 03_derived_signals.yaml.
+    # Tesla Model 3 LR: 75 kWh. Model Y LR: 75 kWh. Model 3 SR: 57.5 kWh.
+
+  ev_charger_power_kw:
+    name: "EV: laadpaal vermogen (kW)"
+    min: 1.4
+    max: 22
+    step: 0.1
+    unit_of_measurement: "kW"
+    icon: mdi:ev-station
+    initial: 11
+    # Alfen Eve Single Pro-line: 11 kW (3-phase 16A), 7.4 kW (1-phase 32A).
+    # Used for ev_charge_hours_needed calculation only — does NOT control charger.
+
+input_datetime:
+  ev_departure_time:
+    name: "EV: geplande vertrektijd"
+    has_date: false
+    has_time: true
+    initial: "07:30:00"
+    # jonasbkarlsson uses this as its ready-by time.
+    # Update via dashboard before overnight charging.
+
+input_boolean:
+  ev_smart_charging_enabled:
+    name: "EV: slim laden ingeschakeld"
+    icon: mdi:car-clock
+    initial: true
+    # Master switch for all EV smart charging automations.
+    # jonasbkarlsson has its own enable toggle — keep both in sync.
+
+  ev_charge_override:
+    name: "EV: handmatig laden aan"
+    icon: mdi:car-arrow-right
+    initial: false
+    # Manual override: start charging immediately regardless of price.
+    # Auto-resets at midnight.
+
+# ── EV charging automations ───────────────────────────────────────────────────
+automation:
+  # ─────────────────────────────────────────────────────────────────────────────
+  # Tesla SOC sync → ev_soc_manual
+  # ─────────────────────────────────────────────────────────────────────────────
+  - id: ev_sync_tesla_soc
+    alias: "EV: synchroniseer Tesla SoC naar handmatig veld"
+    description: >
+      When Tesla SOC is available from the cloud API, syncs it to
+      input_number.ev_soc_manual so jonasbkarlsson/ev_smart_charging can use it
+      as a fallback when the cloud API is unavailable.
+      Only updates when the value actually changes by >2% to avoid unnecessary writes.
+    trigger:
+      - platform: state
+        entity_id: sensor.tesla_battery_level
+    condition:
+      - condition: template
+        value_template: >
+          {% set tesla = states('sensor.tesla_battery_level') | float(none) %}
+          {% set manual = states('input_number.ev_soc_manual') | float(0) %}
+          {{ tesla is not none
+             and (tesla - manual) | abs > 2 }}
+    action:
+      - service: input_number.set_value
+        target:
+          entity_id: input_number.ev_soc_manual
+        data:
+          value: >
+            {{ states('sensor.tesla_battery_level') | float(50) | round(0) }}
+    mode: single
+
+  # ─────────────────────────────────────────────────────────────────────────────
+  # Manual override: immediately start charging
+  # ─────────────────────────────────────────────────────────────────────────────
+  - id: ev_manual_override_start
+    alias: "EV: handmatig laden starten"
+    description: >
+      Starts charging immediately when ev_charge_override is turned on.
+      Respects rate limiting (10 min between Alfen operations).
+      Kill switch must be on.
+    trigger:
+      - platform: state
+        entity_id: input_boolean.ev_charge_override
+        to: "on"
+    condition:
+      - condition: state
+        entity_id: input_boolean.energy_automation_enabled
+        state: "on"
+      - condition: state
+        entity_id: binary_sensor.alfen_car_connected
+        state: "on"
+      - condition: state
+        entity_id: binary_sensor.alfen_change_allowed
+        state: "on"
+    action:
+      - service: input_datetime.set_datetime
+        target:
+          entity_id: input_datetime.alfen_last_change
+        data:
+          datetime: "{{ now().strftime('%Y-%m-%d %H:%M:%S') }}"
+      - service: input_text.set_value
+        target:
+          entity_id: input_text.ev_last_action
+        data:
+          value: >
+            {{ now().strftime('%H:%M') }} Handmatig laden gestart
+      - service: switch.turn_on
+        target:
+          entity_id: switch.alfen_wallbox_availability_manager
+    mode: single
+
+  - id: ev_manual_override_stop
+    alias: "EV: handmatig laden stoppen"
+    description: "Stops the manual override at midnight."
+    trigger:
+      - platform: time
+        at: "00:00:10"
+    condition:
+      - condition: state
+        entity_id: input_boolean.ev_charge_override
+        state: "on"
+    action:
+      - service: input_boolean.turn_off
+        target:
+          entity_id: input_boolean.ev_charge_override
+      - service: input_text.set_value
+        target:
+          entity_id: input_text.ev_last_action
+        data:
+          value: >
+            {{ now().strftime('%H:%M') }} Handmatig laden reset om middernacht
+    mode: single
+
+  # ─────────────────────────────────────────────────────────────────────────────
+  # Emergency charge: SOC below minimum → start charging regardless of price
+  # ─────────────────────────────────────────────────────────────────────────────
+  - id: ev_emergency_charge
+    alias: "EV: noodladen — SoC onder minimum"
+    description: >
+      If EV SOC drops below ev_minimum_soc while the car is connected, starts
+      charging immediately regardless of price. Notifies user.
+      Uses Alfen power as primary signal (connected + power < 200W = connected but not charging).
+    trigger:
+      - platform: state
+        entity_id: binary_sensor.ev_needs_emergency_charge
+        to: "on"
+        for: "00:02:00"
+    condition:
+      - condition: state
+        entity_id: input_boolean.energy_automation_enabled
+        state: "on"
+      - condition: state
+        entity_id: binary_sensor.alfen_car_connected
+        state: "on"
+      - condition: state
+        entity_id: binary_sensor.alfen_change_allowed
+        state: "on"
+    action:
+      - service: input_datetime.set_datetime
+        target:
+          entity_id: input_datetime.alfen_last_change
+        data:
+          datetime: "{{ now().strftime('%Y-%m-%d %H:%M:%S') }}"
+      - service: input_text.set_value
+        target:
+          entity_id: input_text.ev_last_action
+        data:
+          value: >
+            {{ now().strftime('%H:%M') }} ⚡ Noodladen gestart — SoC {{ states('sensor.ev_soc_display') }}%
+      - service: switch.turn_on
+        target:
+          entity_id: switch.alfen_wallbox_availability_manager
+      - service: !secret notify_target
+        data:
+          title: "⚡ EV noodladen gestart"
+          message: >
+            EV SoC ({{ states('sensor.ev_soc_display') }}%) is onder het minimum
+            ({{ states('input_number.ev_minimum_soc') }}%).
+            Noodladen gestart ongeacht energieprijs.
+            Huidige prijs: {{ states('sensor.energy_price_all_in') | float(0) | round(3) }} €/kWh
+          data:
+            tag: ev_emergency_charge
+    mode: single
+
+  # ─────────────────────────────────────────────────────────────────────────────
+  # Solar excess absorption: exporting >1kW for >5 min → start charging
+  # ─────────────────────────────────────────────────────────────────────────────
+  - id: ev_solar_excess_charge
+    alias: "EV: laden bij zonne-energie overschot"
+    description: >
+      When there is sustained solar export to grid (>1kW for >5 min), starts
+      EV charging to absorb the excess locally. This is free solar energy.
+      Rate limiting: waits 10 min after last Alfen operation.
+      Kill switch + car connected + smart charging enabled required.
+    trigger:
+      - platform: numeric_state
+        entity_id: sensor.homewizard_p1_active_power_w
+        below: -1000
+        for: "00:05:00"
+    condition:
+      - condition: state
+        entity_id: input_boolean.energy_automation_enabled
+        state: "on"
+      - condition: state
+        entity_id: input_boolean.ev_smart_charging_enabled
+        state: "on"
+      - condition: state
+        entity_id: binary_sensor.alfen_car_connected
+        state: "on"
+      - condition: state
+        entity_id: binary_sensor.alfen_change_allowed
+        state: "on"
+      - condition: template
+        value_template: >
+          {% set soc = states('sensor.ev_soc_display') | float(100) %}
+          {% set target = states('input_number.ev_target_soc') | float(80) %}
+          {{ soc < target }}
+        # Don't charge if already at target SOC.
+      - condition: template
+        value_template: >
+          {{ not is_state('binary_sensor.ev_actually_charging', 'on') }}
+        # Don't re-enable if already charging.
+    action:
+      - service: input_datetime.set_datetime
+        target:
+          entity_id: input_datetime.alfen_last_change
+        data:
+          datetime: "{{ now().strftime('%Y-%m-%d %H:%M:%S') }}"
+      - service: input_text.set_value
+        target:
+          entity_id: input_text.ev_last_action
+        data:
+          value: >
+            {{ now().strftime('%H:%M') }} Zonne-energie laden — export: {{ states('sensor.homewizard_p1_active_power_w') | float(0) | abs | round(0) }} W
+      - service: switch.turn_on
+        target:
+          entity_id: switch.alfen_wallbox_availability_manager
+    mode: single
+
+  - id: ev_solar_excess_stop
+    alias: "EV: stop zonne-energie laden — export gestopt"
+    description: >
+      Stops solar excess charging when grid export drops below 200W.
+      Only stops if it was started by solar excess logic (not manual override).
+      Rate limiting applies.
+    trigger:
+      - platform: numeric_state
+        entity_id: sensor.homewizard_p1_active_power_w
+        above: -200
+        for: "00:05:00"
+    condition:
+      - condition: state
+        entity_id: input_boolean.energy_automation_enabled
+        state: "on"
+      - condition: state
+        entity_id: input_boolean.ev_smart_charging_enabled
+        state: "on"
+      - condition: state
+        entity_id: binary_sensor.ev_actually_charging
+        state: "on"
+      - condition: state
+        entity_id: input_boolean.ev_charge_override
+        state: "off"
+      - condition: state
+        entity_id: binary_sensor.alfen_change_allowed
+        state: "on"
+      - condition: template
+        value_template: >
+          {{ not is_state('binary_sensor.is_cheap_hour', 'on') }}
+        # Don't stop during a cheap price window (jonasbkarlsson may have started it).
+    action:
+      - service: input_datetime.set_datetime
+        target:
+          entity_id: input_datetime.alfen_last_change
+        data:
+          datetime: "{{ now().strftime('%Y-%m-%d %H:%M:%S') }}"
+      - service: input_text.set_value
+        target:
+          entity_id: input_text.ev_last_action
+        data:
+          value: >
+            {{ now().strftime('%H:%M') }} Zonne-energie laden gestopt — export onder 200W
+      - service: switch.turn_off
+        target:
+          entity_id: switch.alfen_wallbox_availability_manager
+    mode: single
+
+  # ─────────────────────────────────────────────────────────────────────────────
+  # Evening reminder: car not connected at 20:00
+  # ─────────────────────────────────────────────────────────────────────────────
+  - id: ev_evening_reminder
+    alias: "EV: avondherinnering — auto niet aangesloten"
+    description: >
+      If the car is not connected to the charger at 20:00, sends a notification.
+      At 20:00, the cheapest overnight window calculation starts (AIO).
+      If the car isn't plugged in, it won't benefit from cheap overnight charging.
+    trigger:
+      - platform: time
+        at: "20:00:00"
+    condition:
+      - condition: state
+        entity_id: input_boolean.energy_automation_enabled
+        state: "on"
+      - condition: state
+        entity_id: binary_sensor.alfen_car_connected
+        state: "off"
+    action:
+      - service: !secret notify_target
+        data:
+          title: "🚗 EV niet aangesloten"
+          message: >
+            De auto is niet aangesloten aan de laadpaal.
+            De goedkoopste laadperiode start binnenkort.
+            Sluit de auto aan om te profiteren van goedkope nachttarieven.
+
+            Goedkoopste uren vanavond: {{ states('sensor.today_price_min') | float(0) | round(3) }} €/kWh (spot)
+          data:
+            tag: ev_not_connected
+            actions:
+              - action: "URI"
+                title: "Open energie dashboard"
+                uri: "/lovelace/energie"
+    mode: single

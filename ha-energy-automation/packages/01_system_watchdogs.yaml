@@ -1,10 +1,12 @@
 ---
 # 01_system_watchdogs.yaml
 # ──────────────────────────────────────────────────────────────────────────────
-# System health watchdogs:
+# System health watchdogs and shared infrastructure helpers:
 #   1. SolarEdge Modbus unavailability watchdog
 #   2. Alfen Eve API session loss watchdog
 #   3. Nord Pool price freshness watchdog
+#   4. Kill switch disable watchdog (safe-state all actuators)
+#   5. Startup automation — resets rate-limit datetimes to prevent false guards
 #
 # These run independently of all other automations and act as early-warning
 # systems. They also enforce safe fallback states when critical integrations fail.
@@ -22,6 +24,11 @@ input_text:
     max: 255
     icon: mdi:battery-sync
 
+  ev_last_action:
+    name: "EV lader: laatste actie log"
+    max: 255
+    icon: mdi:car-electric-outline
+
 input_datetime:
   last_modbus_alert:
     name: "Modbus: tijdstip laatste melding"
@@ -38,8 +45,117 @@ input_datetime:
     has_date: true
     has_time: true
 
+  battery_last_mode_change:
+    name: "Batterij: tijdstip laatste moduswijziging"
+    has_date: true
+    has_time: true
+    # Rate-limit tracker — battery executor waits 5 min between Modbus writes.
+    # Set to 1970-01-01 on startup to avoid blocking first legitimate write.
+
+  alfen_last_change:
+    name: "Alfen: tijdstip laatste schakelactie"
+    has_date: true
+    has_time: true
+    # Rate-limit tracker — Alfen automations wait 10 min between enable/disable.
+    # Protects EEPROM flash. See docs/ALFEN_WARNING.md.
+
+input_boolean:
+  negative_price_notified:
+    name: "Negatieve prijs: notificatie verstuurd"
+    icon: mdi:bell-check
+    initial: false
+    # Used to debounce negative price notifications — reset at midnight.
+
 # ── Watchdog automations ───────────────────────────────────────────────────────
 automation:
+  # ─────────────────────────────────────────────────────────────────────────────
+  # STARTUP — Reset rate-limit datetimes to epoch so first write is never blocked
+  # ─────────────────────────────────────────────────────────────────────────────
+  - id: startup_reset_rate_limiters
+    alias: "Systeem: reset snelheidsbegrenzers bij opstart"
+    description: >
+      On HA startup, resets battery_last_mode_change and alfen_last_change to
+      1970-01-01 so the first legitimate actuation is never rate-limited.
+      Without this, an HA restart could leave these pointing to a recent time,
+      blocking all writes for 5-10 minutes after restart.
+    trigger:
+      - platform: homeassistant
+        event: start
+    action:
+      - delay: "00:00:30"
+      - service: input_datetime.set_datetime
+        target:
+          entity_id: input_datetime.battery_last_mode_change
+        data:
+          datetime: "1970-01-01 00:00:00"
+      - service: input_datetime.set_datetime
+        target:
+          entity_id: input_datetime.alfen_last_change
+        data:
+          datetime: "1970-01-01 00:00:00"
+      - service: input_boolean.turn_off
+        target:
+          entity_id: input_boolean.negative_price_notified
+    mode: single
+
+  # ─────────────────────────────────────────────────────────────────────────────
+  # MIDNIGHT — Reset negative_price_notified for new day
+  # ─────────────────────────────────────────────────────────────────────────────
+  - id: midnight_reset_negative_price_flag
+    alias: "Systeem: reset negatieve prijs vlag om middernacht"
+    trigger:
+      - platform: time
+        at: "00:00:30"
+    action:
+      - service: input_boolean.turn_off
+        target:
+          entity_id: input_boolean.negative_price_notified
+    mode: single
+
+  # ─────────────────────────────────────────────────────────────────────────────
+  # WATCHDOG 0 — Kill switch disabled → safe state all actuators
+  # ─────────────────────────────────────────────────────────────────────────────
+  - id: watchdog_kill_switch_disabled
+    alias: "Watchdog: kill switch uitgeschakeld — veilige stand"
+    description: >
+      When the global kill switch (input_boolean.energy_automation_enabled) is
+      turned off, immediately put all actuators in safe fallback states:
+        - Battery → SELF_CONSUME
+        - Alfen → disabled (stop automated control)
+      This lets users quickly disable all automations from one place (e.g. during
+      maintenance, manual overrides, or system testing).
+    trigger:
+      - platform: state
+        entity_id: input_boolean.energy_automation_enabled
+        to: "off"
+    action:
+      - service: input_select.select_option
+        target:
+          entity_id: input_select.battery_desired_mode
+        data:
+          option: "SELF_CONSUME"
+      - service: switch.turn_off
+        target:
+          entity_id: switch.alfen_wallbox_availability_manager
+      - service: input_text.set_value
+        target:
+          entity_id: input_text.system_last_alert
+        data:
+          value: >
+            {{ now().strftime('%H:%M') }} 🔴 Kill switch uitgeschakeld — alle automaties gepauzeerd
+      - service: !secret notify_target
+        data:
+          title: "🔴 Energie automaties uitgeschakeld"
+          message: >
+            De globale kill switch is uitgeschakeld.
+            Batterij ingesteld op SELF_CONSUME.
+            Alfen laden gestopt.
+
+            Zet de kill switch weer aan via het dashboard om automaties te hervatten.
+          data:
+            tag: kill_switch
+    mode: single
+
   # ─────────────────────────────────────────────────────────────────────────────
   # WATCHDOG 1 — SolarEdge Modbus unavailable for >10 minutes
   # ─────────────────────────────────────────────────────────────────────────────

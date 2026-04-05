@@ -1,0 +1,180 @@
+---
+# 09_solar_forecast.yaml
+# ──────────────────────────────────────────────────────────────────────────────
+# Forecast.Solar integration — solar production forecasting
+#
+# Uses the Forecast.Solar integration (no HACS needed — built into HA).
+# Install via: Settings → Integrations → + Add → Forecast.Solar
+# Configuration: 4 kWp, azimuth 180° (south), tilt 35°, NL location.
+#
+# Provides:
+#   - sensor.solar_forecast_tomorrow_kwh — tomorrow's expected production
+#   - sensor.solar_forecast_category — sunny/partly_cloudy/cloudy classification
+#   - binary_sensor.battery_will_fill_naturally — controls grid charge gating
+#   - binary_sensor.good_solar_day_today — used by 06_battery_automations
+#
+# At 14:00, checks if forecast seems implausibly low (API issue) and notifies.
+# ──────────────────────────────────────────────────────────────────────────────
+
+# ── Solar forecast helpers ──────────────────────────────────────────────────────
+input_number:
+  solar_sunny_day_threshold:
+    name: "Zon: drempel voor zonnige dag (kWh)"
+    min: 10
+    max: 50
+    step: 1
+    unit_of_measurement: "kWh"
+    icon: mdi:weather-sunny
+    initial: 25
+    # Forecast above this = "sunny day" → limit grid battery charge.
+    # Calibrate after a few weeks: note actual production on clear summer/winter days.
+
+  solar_cloud_day_threshold:
+    name: "Zon: drempel voor bewolkte dag (kWh)"
+    min: 0
+    max: 20
+    step: 1
+    unit_of_measurement: "kWh"
+    icon: mdi:weather-cloudy
+    initial: 8
+    # Forecast below this = "cloudy day" → allow full grid battery charge.
+    # Between cloudy and sunny threshold = "partly cloudy".
+
+# ── Solar forecast sensors ─────────────────────────────────────────────────────
+template:
+  - sensor:
+      - name: "solar_forecast_tomorrow_kwh"
+        unique_id: solar_forecast_tomorrow_kwh
+        unit_of_measurement: "kWh"
+        device_class: energy
+        state_class: measurement
+        icon: mdi:solar-power
+        state: >
+          {% set forecast = state_attr('sensor.energy_production_tomorrow', 'wh_days') %}
+          {% if forecast is not none %}
+            {{ (forecast | float(0) / 1000) | round(2) }}
+          {% else %}
+            {{ states('sensor.energy_production_tomorrow') | float(0) | round(2) }}
+          {% endif %}
+        availability: >
+          {{ states('sensor.energy_production_tomorrow') not in ['unavailable', 'unknown'] }}
+        # Note: entity name may differ depending on your Forecast.Solar configuration.
+        # Check Developer Tools → States and search for 'forecast' if unavailable.
+
+      - name: "solar_forecast_category"
+        unique_id: solar_forecast_category
+        icon: mdi:weather-partly-cloudy
+        state: >
+          {% set forecast = states('sensor.solar_forecast_tomorrow_kwh') | float(0) %}
+          {% set sunny = states('input_number.solar_sunny_day_threshold') | float(25) %}
+          {% set cloudy = states('input_number.solar_cloud_day_threshold') | float(8) %}
+          {% if forecast >= sunny %}
+            sunny
+          {% elif forecast <= cloudy %}
+            cloudy
+          {% else %}
+            partly_cloudy
+          {% endif %}
+        availability: >
+          {{ states('sensor.solar_forecast_tomorrow_kwh') not in ['unavailable', 'unknown'] }}
+        attributes:
+          forecast_kwh: >
+            {{ states('sensor.solar_forecast_tomorrow_kwh') | float(0) | round(2) }}
+          sunny_threshold_kwh: >
+            {{ states('input_number.solar_sunny_day_threshold') | float(25) }}
+          cloudy_threshold_kwh: >
+            {{ states('input_number.solar_cloud_day_threshold') | float(8) }}
+
+      - name: "battery_grid_topup_needed_kwh"
+        unique_id: battery_grid_topup_needed_kwh
+        unit_of_measurement: "kWh"
+        device_class: energy
+        icon: mdi:battery-arrow-up
+        state: >
+          {# Estimated grid top-up needed = battery gap that solar won't cover #}
+          {% set forecast = states('sensor.solar_forecast_tomorrow_kwh') | float(0) %}
+          {% set soc = states('sensor.solaredge_b1_soc') | float(0) %}
+          {% set capacity_kwh = 9.7 %}
+          {% set target = states('sensor.battery_target_soc') | float(95) %}
+          {% set gap_kwh = (target - soc) / 100 * capacity_kwh %}
+          {# Assume charging efficiency 95% — adjust if needed #}
+          {% set solar_available_for_battery = [forecast * 0.4, 0] | max %}
+          {# 40% of forecast assumed available for battery (rest covers household) #}
+          {{ [gap_kwh - solar_available_for_battery, 0] | max | round(2) }}
+        availability: >
+          {{ states('sensor.solar_forecast_tomorrow_kwh') not in ['unavailable', 'unknown']
+             and states('sensor.solaredge_b1_soc') not in ['unavailable', 'unknown'] }}
+
+  - binary_sensor:
+      - name: "tomorrow_is_sunny"
+        unique_id: tomorrow_is_sunny
+        device_class: light
+        state: >
+          {{ states('sensor.solar_forecast_category') == 'sunny' }}
+        availability: >
+          {{ states('sensor.solar_forecast_category') not in ['unavailable', 'unknown'] }}
+
+      - name: "battery_will_fill_naturally"
+        unique_id: battery_will_fill_naturally
+        icon: mdi:battery-check
+        state: >
+          {% set forecast = states('sensor.solar_forecast_tomorrow_kwh') | float(0) %}
+          {{ forecast >= 20 }}
+        # True if forecast > 20 kWh — solar will likely fill 9.7 kWh battery.
+        # Gate: battery_forecast_gate automation (06) disables grid charge when true.
+        availability: >
+          {{ states('sensor.solar_forecast_tomorrow_kwh') not in ['unavailable', 'unknown'] }}
+
+      - name: "good_solar_day_today"
+        unique_id: good_solar_day_today
+        device_class: light
+        state: >
+          {% set solar_now = states('sensor.solaredge_i1_ac_power') | float(0) %}
+          {% set forecast = states('sensor.solar_forecast_tomorrow_kwh') | float(0) %}
+          {{ solar_now > 1000 or forecast >= 15 }}
+        # Proxy for "is it a good solar day". True if producing >1kW now or
+        # forecast suggests >15 kWh total.
+
+# ── Solar forecast automations ─────────────────────────────────────────────────
+automation:
+  # ─────────────────────────────────────────────────────────────────────────────
+  # Daily 14:00 forecast fault check
+  # ─────────────────────────────────────────────────────────────────────────────
+  - id: solar_forecast_fault_check
+    alias: "Zon: dagelijkse prognose foutcontrole om 14:00"
+    description: >
+      At 14:00 checks whether the solar forecast seems implausibly low.
+      Forecast.Solar occasionally returns 0 kWh when the API is unavailable
+      or the integration hasn't refreshed yet.
+      Triggers a notification if forecast < 0.5 kWh in summer months (Apr-Sep).
+      In winter (Oct-Mar) a low forecast is normal and is not flagged.
+    trigger:
+      - platform: time
+        at: "14:00:00"
+    condition:
+      - condition: state
+        entity_id: input_boolean.energy_automation_enabled
+        state: "on"
+      - condition: template
+        value_template: >
+          {% set month = now().month %}
+          {% set forecast = states('sensor.solar_forecast_tomorrow_kwh') | float(0) %}
+          {# Only flag in summer (April-September) when zero forecast is suspicious #}
+          {{ month >= 4 and month <= 9 and forecast < 0.5 }}
+    action:
+      - service: !secret notify_target
+        data:
+          title: "☁️ Zonneprognose onverwacht laag"
+          message: >
+            De zonne-energieprognose voor morgen is {{ states('sensor.solar_forecast_tomorrow_kwh') }} kWh.
+            Dit lijkt laag voor {{ now().strftime('%B') }}.
+
+            Mogelijke oorzaak:
+            • Forecast.Solar API tijdelijk niet beschikbaar
+            • Integratie nog niet ververst (verwacht na ~14:00)
+
+            Controleer: Instellingen → Integraties → Forecast.Solar → vernieuwen.
+            Als prognose klopt: bewolkte dag verwacht.
+          data:
+            tag: solar_forecast_low
+    mode: single

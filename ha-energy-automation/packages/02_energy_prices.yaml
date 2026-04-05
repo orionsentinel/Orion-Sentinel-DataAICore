@@ -2,16 +2,41 @@
 # 02_energy_prices.yaml
 # ──────────────────────────────────────────────────────────────────────────────
 # Nord Pool NL spot pricing, all-in price calculations, AIO Energy Management
-# configuration, price-derived helpers, and freshness guards.
+# configuration, price-derived helpers, freshness guards, and global kill switch.
 #
 # FRESHNESS GUARD: All price-triggered automations must check sensor.price_freshness_ok
 # before acting. Acting on stale prices is a real failure mode (e.g. after HA restart).
 # Threshold: price sensor last_updated within 90 minutes (5400 seconds).
 #
+# KILL SWITCH: input_boolean.energy_automation_enabled — all automations in packages
+# 05-09 check this before acting. Turning it off puts the system in safe manual mode.
+#
+# ARBITRAGE GUARD: binary_sensor.arbitrage_opportunity (in 03_derived_signals.yaml)
+# must be on before battery cycling is activated. This prevents unnecessary battery
+# degradation when the price spread is too small to justify the cycle cost.
+#
 # DST NOTE: Nord Pool typically publishes D+1 prices at 13:00-14:00 CET/CEST.
 # On DST transition days, AIO scheduling windows may shift by 1 hour.
 # See docs/SETUP.md for manual verification steps on DST days.
 # ──────────────────────────────────────────────────────────────────────────────
+
+# ── Global kill switch ─────────────────────────────────────────────────────────
+input_boolean:
+  energy_automation_enabled:
+    name: "Energie automaties: ingeschakeld"
+    icon: mdi:lightning-bolt-circle
+    initial: true
+    # MASTER KILL SWITCH — checked by every automation in packages 05-09.
+    # Turn off for maintenance, manual overrides, or testing.
+    # When turned off: battery → SELF_CONSUME, Alfen → stopped.
+    # Dashboard: shows prominently in top row as a large toggle.
+
+  allow_grid_battery_charge:
+    name: "Sta toe: batterij laden van net"
+    icon: mdi:battery-charging-outline
+    initial: true
+    # Master switch for grid→battery charging. Disabled automatically on sunny
+    # forecast days (in 09_solar_forecast.yaml). Override manually via dashboard.
 
 # ── Price-related helpers ──────────────────────────────────────────────────────
 input_number:
@@ -58,13 +83,20 @@ input_number:
     initial: 20
     # Battery will not discharge below this level. Provides backup capacity.
 
-input_boolean:
-  allow_grid_battery_charge:
-    name: "Sta toe: batterij laden van net"
-    icon: mdi:battery-charging-outline
-    initial: true
-    # Master switch. Disabled automatically on sunny forecast days.
-    # Override manually via dashboard.
+  arbitrage_min_spread:
+    name: "Minimale prijsspreiding voor arbitrage"
+    min: 0.00
+    max: 0.30
+    step: 0.01
+    unit_of_measurement: "€/kWh"
+    icon: mdi:chart-bell-curve-cumulative
+    initial: 0.10
+    # Minimum spread between today's cheapest and most expensive hour (spot prices)
+    # required before battery cycling (GRID_CHARGE + PEAK_DISCHARGE) is enabled.
+    # Rationale: battery degradation costs ~0.05-0.08 €/kWh per cycle. Arbitrage
+    # is only worthwhile if spread > degradation cost + some margin.
+    # Default 0.10 €/kWh (~10 ct) is conservative but safe.
+    # Lower to 0.06 if you want more aggressive cycling.
 
 # ── Price template sensors ─────────────────────────────────────────────────────
 template:
@@ -285,8 +317,8 @@ automation:
     alias: "Prijs: negatieve prijs melding (debounced)"
     description: >
       Sends a notification when the spot price turns negative.
-      Debounced: only fires once per negative-price event (waits for price to
-      go positive again before it can fire again). Not every minute.
+      Debounced via input_boolean.negative_price_notified — only fires once
+      per negative-price event per day. Reset at midnight and on HA startup.
     trigger:
       - platform: state
         entity_id: binary_sensor.is_negative_price
@@ -294,7 +326,13 @@ automation:
     condition:
       - condition: template
         value_template: "{{ states('sensor.price_freshness_ok') == 'true' }}"
+      - condition: state
+        entity_id: input_boolean.negative_price_notified
+        state: "off"
     action:
+      - service: input_boolean.turn_on
+        target:
+          entity_id: input_boolean.negative_price_notified
       - service: !secret notify_target
         data:
           title: "💚 Negatieve energieprijs!"

@@ -1,0 +1,307 @@
+---
+# 05_battery_state_machine.yaml
+# ──────────────────────────────────────────────────────────────────────────────
+# Battery control state machine — Single Writer Pattern
+#
+# ARCHITECTURE: Only this file's executor automation writes to Modbus.
+# All other automations (06_battery_automations.yaml) write ONLY to
+# input_select.battery_desired_mode. The executor translates that to Modbus.
+#
+# This eliminates race conditions: no two automations can write conflicting
+# Modbus values simultaneously.
+#
+# DATA FLOW:
+#   Rule automations → input_select.battery_desired_mode → [executor] → Modbus
+#
+# PRIORITY (highest to lowest):
+#   FORCE_DISCHARGE > FORCE_CHARGE > GRID_CHARGE > PEAK_DISCHARGE > HOLD > SELF_CONSUME
+#
+# RATE LIMITING: The executor waits 5 minutes between Modbus writes.
+# FORCE modes (FORCE_CHARGE, FORCE_DISCHARGE) bypass rate limiting.
+# This prevents excessive Modbus writes from rapid state transitions.
+#
+# HOLD MODE: Maps to "Maximize Self Consumption" — battery charges from solar
+# but does NOT actively discharge to cover household load. This is the correct
+# behavior for holding battery charge (e.g. before a peak price window).
+# v2 BUG FIX: v2 incorrectly mapped HOLD → "Charge from PV" which stopped
+# solar charging. The correct mode is "Maximize Self Consumption".
+#
+# See docs/BATTERY_STATE_MACHINE.md for full architecture documentation.
+# ──────────────────────────────────────────────────────────────────────────────
+
+# ── State machine input ────────────────────────────────────────────────────────
+input_select:
+  battery_desired_mode:
+    name: "Batterij: gewenste modus"
+    options:
+      - SELF_CONSUME
+      - GRID_CHARGE
+      - PEAK_DISCHARGE
+      - HOLD
+      - FORCE_CHARGE
+      - FORCE_DISCHARGE
+    initial: SELF_CONSUME
+    icon: mdi:battery-sync
+    # SELF_CONSUME: Normal operation — battery charges from solar excess, discharges
+    #               to cover household load. Let SolarEdge optimize.
+    # GRID_CHARGE:  Buy cheap electricity to fill battery. Only active when price
+    #               is below threshold AND arbitrage_opportunity is on.
+    # PEAK_DISCHARGE: Force battery to discharge during expensive hours.
+    #               Only active when arbitrage_opportunity is on.
+    # HOLD:         Battery charges from solar but does NOT discharge.
+    #               Use before expected peak price window.
+    # FORCE_CHARGE: Override — charge from grid regardless of price.
+    #               Set manually via scripts/battery_mode_override.yaml.
+    # FORCE_DISCHARGE: Override — discharge battery regardless of price/SOC.
+    #               USE WITH CAUTION — bypasses minimum SOC check.
+
+# ── State reason sensor ────────────────────────────────────────────────────────
+template:
+  - sensor:
+      - name: "battery_mode_reason"
+        unique_id: battery_mode_reason
+        icon: mdi:information-outline
+        state: >
+          {% set mode = states('input_select.battery_desired_mode') %}
+          {% set soc = states('sensor.solaredge_b1_soc') | float(0) | round(0) %}
+          {% set price = states('sensor.nord_pool_nl_current_price') | float(0) | round(4) %}
+          {% set spread = states('sensor.price_spread_today') | float(0) | round(3) %}
+          {% set last = states('input_text.battery_last_action') %}
+          {% if mode == 'SELF_CONSUME' %}
+            Normaal — zelf verbruik (SoC: {{ soc }}%)
+          {% elif mode == 'GRID_CHARGE' %}
+            Laden van net — spotprijs: {{ price }} €/kWh (SoC: {{ soc }}%)
+          {% elif mode == 'PEAK_DISCHARGE' %}
+            Ontladen piekuur — spotprijs: {{ price }} €/kWh, spreiding: {{ spread }} €/kWh
+          {% elif mode == 'HOLD' %}
+            Wachten — batterij vasthouden voor piekuur (SoC: {{ soc }}%)
+          {% elif mode == 'FORCE_CHARGE' %}
+            HANDMATIG: forceer laden — {{ last }}
+          {% elif mode == 'FORCE_DISCHARGE' %}
+            HANDMATIG: forceer ontladen — {{ last }}
+          {% else %}
+            Onbekend
+          {% endif %}
+
+# ── Mode executor — THE ONLY MODBUS WRITER ────────────────────────────────────
+automation:
+  - id: battery_mode_executor
+    alias: "Batterij: modus uitvoerder (ENIGE Modbus schrijver)"
+    description: >
+      THE SINGLE WRITER: Translates input_select.battery_desired_mode to Modbus writes.
+      This is the ONLY automation that writes to the SolarEdge battery Modbus registers.
+
+      Rate limiting: waits 5 minutes between writes UNLESS mode is FORCE_CHARGE or
+      FORCE_DISCHARGE (manual overrides bypass rate limiting for responsiveness).
+
+      Safety: checks modbus_available and battery_hardware_available before writing.
+      If unavailable: logs warning, does NOT write to Modbus, leaves current state.
+
+      Modbus mode mapping:
+        SELF_CONSUME   → Maximize Self Consumption
+        GRID_CHARGE    → Charge from Grid
+        PEAK_DISCHARGE → Maximize Self Consumption (with forced discharge — SolarEdge handles)
+        HOLD           → Maximize Self Consumption (charges from solar, no active discharge)
+        FORCE_CHARGE   → Charge from Grid
+        FORCE_DISCHARGE → Maximize Self Consumption (manual discharge via script)
+    trigger:
+      - platform: state
+        entity_id: input_select.battery_desired_mode
+    action:
+      - choose:
+          # ── SAFETY CHECK: Modbus or battery unavailable ──
+          - conditions:
+              - condition: template
+                value_template: >
+                  {{ not is_state('binary_sensor.modbus_available', 'on')
+                     or not is_state('binary_sensor.battery_hardware_available', 'on') }}
+            sequence:
+              - service: system_log.write
+                data:
+                  level: warning
+                  message: >
+                    Battery mode executor: skipped Modbus write —
+                    modbus_available={{ states('binary_sensor.modbus_available') }},
+                    battery_available={{ states('binary_sensor.battery_hardware_available') }}
+              - service: input_text.set_value
+                target:
+                  entity_id: input_text.battery_last_action
+                data:
+                  value: >
+                    {{ now().strftime('%H:%M') }} ⚠️ Modbus niet beschikbaar — schrijven overgeslagen
+              # Do NOT write to Modbus. Leave current hardware state unchanged.
+
+          # ── FORCE modes: bypass rate limiting ──
+          - conditions:
+              - condition: template
+                value_template: >
+                  {{ states('input_select.battery_desired_mode') in ['FORCE_CHARGE', 'FORCE_DISCHARGE'] }}
+              - condition: state
+                entity_id: binary_sensor.modbus_available
+                state: "on"
+              - condition: state
+                entity_id: binary_sensor.battery_hardware_available
+                state: "on"
+            sequence:
+              - service: input_datetime.set_datetime
+                target:
+                  entity_id: input_datetime.battery_last_mode_change
+                data:
+                  datetime: "{{ now().strftime('%Y-%m-%d %H:%M:%S') }}"
+              - service: input_text.set_value
+                target:
+                  entity_id: input_text.battery_last_action
+                data:
+                  value: >
+                    {{ now().strftime('%H:%M') }} HANDMATIG: {{ states('input_select.battery_desired_mode') }}
+              - service: select.select_option
+                target:
+                  entity_id: select.solaredge_i1_storage_remote_control_command_mode
+                data:
+                  option: "Remote Control"
+              - delay: "00:00:02"
+              - choose:
+                  - conditions:
+                      - condition: state
+                        entity_id: input_select.battery_desired_mode
+                        state: "FORCE_CHARGE"
+                    sequence:
+                      - service: select.select_option
+                        target:
+                          entity_id: select.solaredge_i1_storage_default_mode
+                        data:
+                          option: "Charge from Grid"
+                  - conditions:
+                      - condition: state
+                        entity_id: input_select.battery_desired_mode
+                        state: "FORCE_DISCHARGE"
+                    sequence:
+                      - service: select.select_option
+                        target:
+                          entity_id: select.solaredge_i1_storage_default_mode
+                        data:
+                          option: "Maximize Self Consumption"
+                      # Note: forced discharge is managed externally (script sets Modbus discharge power)
+
+          # ── NORMAL modes: apply rate limiting ──
+          - conditions:
+              - condition: state
+                entity_id: binary_sensor.modbus_available
+                state: "on"
+              - condition: state
+                entity_id: binary_sensor.battery_hardware_available
+                state: "on"
+              - condition: state
+                entity_id: binary_sensor.battery_change_allowed
+                state: "on"
+            sequence:
+              - service: input_datetime.set_datetime
+                target:
+                  entity_id: input_datetime.battery_last_mode_change
+                data:
+                  datetime: "{{ now().strftime('%Y-%m-%d %H:%M:%S') }}"
+              - service: input_text.set_value
+                target:
+                  entity_id: input_text.battery_last_action
+                data:
+                  value: >
+                    {{ now().strftime('%H:%M') }} → {{ states('input_select.battery_desired_mode') }}
+              - service: select.select_option
+                target:
+                  entity_id: select.solaredge_i1_storage_remote_control_command_mode
+                data:
+                  option: "Remote Control"
+              - delay: "00:00:02"
+              - choose:
+                  - conditions:
+                      - condition: state
+                        entity_id: input_select.battery_desired_mode
+                        state: "SELF_CONSUME"
+                    sequence:
+                      - service: select.select_option
+                        target:
+                          entity_id: select.solaredge_i1_storage_default_mode
+                        data:
+                          option: "Maximize Self Consumption"
+
+                  - conditions:
+                      - condition: state
+                        entity_id: input_select.battery_desired_mode
+                        state: "GRID_CHARGE"
+                    sequence:
+                      - service: select.select_option
+                        target:
+                          entity_id: select.solaredge_i1_storage_default_mode
+                        data:
+                          option: "Charge from Grid"
+
+                  - conditions:
+                      - condition: state
+                        entity_id: input_select.battery_desired_mode
+                        state: "PEAK_DISCHARGE"
+                    sequence:
+                      - service: select.select_option
+                        target:
+                          entity_id: select.solaredge_i1_storage_default_mode
+                        data:
+                          option: "Maximize Self Consumption"
+                      # SolarEdge "Maximize Self Consumption" will discharge during peak loads.
+
+                  - conditions:
+                      - condition: state
+                        entity_id: input_select.battery_desired_mode
+                        state: "HOLD"
+                    sequence:
+                      - service: select.select_option
+                        target:
+                          entity_id: select.solaredge_i1_storage_default_mode
+                        data:
+                          option: "Maximize Self Consumption"
+                      # HOLD = battery charges from solar but does NOT actively discharge.
+                      # "Maximize Self Consumption" is correct: solar charges battery,
+                      # but battery won't discharge unless home consumption exceeds solar.
+                      # This holds SOC steady for use during upcoming peak hour.
+                      # v2 BUG FIX: was incorrectly "Charge from PV" (stops all charging).
+
+          # ── RATE LIMITED: write skipped ──
+          - conditions:
+              - condition: state
+                entity_id: binary_sensor.battery_change_allowed
+                state: "off"
+            sequence:
+              - service: system_log.write
+                data:
+                  level: info
+                  message: >
+                    Battery mode executor: rate limited — last change <5 min ago.
+                    Requested: {{ states('input_select.battery_desired_mode') }}
+    mode: queued
+    max: 3
+
+  # ── Startup initialisation ─────────────────────────────────────────────────
+  - id: battery_mode_init_on_startup
+    alias: "Batterij: initialiseer modus bij opstart"
+    description: >
+      Sets battery to SELF_CONSUME on HA startup. Waits 60 seconds for all
+      integrations to initialize before writing. Prevents writing to Modbus
+      before the SolarEdge integration has fully connected.
+    trigger:
+      - platform: homeassistant
+        event: start
+    action:
+      - delay: "00:01:00"
+      - condition: state
+        entity_id: binary_sensor.modbus_available
+        state: "on"
+      - service: input_select.select_option
+        target:
+          entity_id: input_select.battery_desired_mode
+        data:
+          option: "SELF_CONSUME"
+      - service: input_text.set_value
+        target:
+          entity_id: input_text.battery_last_action
+        data:
+          value: >
+            {{ now().strftime('%H:%M') }} Opstart — SELF_CONSUME ingesteld
+    mode: single

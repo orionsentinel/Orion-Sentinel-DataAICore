@@ -1,0 +1,94 @@
+---
+# 04_solaredge.yaml
+# ──────────────────────────────────────────────────────────────────────────────
+# LAYER 1: Raw data ingestion — SolarEdge Modbus Multi + HomeWizard P1 + Alfen
+#
+# This file contains ONLY raw pass-through sensors and availability binary
+# sensors. No computed or derived values belong here.
+# All derived sensors are in 03_derived_signals.yaml (Layer 2).
+#
+# SolarEdge Modbus Multi HACS integration entities:
+#   Inverter (i1): solaredge_i1_*
+#   Grid meter (m1): solaredge_m1_*
+#   Battery (b1): solaredge_b1_*
+#
+# MODBUS WARNING: WiFi Modbus is actively deprecated by SolarEdge.
+# See docs/MODBUS_PROXY.md — run an Ethernet cable ASAP.
+# ──────────────────────────────────────────────────────────────────────────────
+
+# ── Availability binary sensors ────────────────────────────────────────────────
+template:
+  - binary_sensor:
+      - name: "modbus_available"
+        unique_id: modbus_available
+        device_class: connectivity
+        state: >
+          {{ states('sensor.solaredge_i1_ac_power') not in ['unavailable', 'unknown'] }}
+        # Primary Modbus health check. Used by battery executor before writing.
+
+      - name: "p1_available"
+        unique_id: p1_available
+        device_class: connectivity
+        state: >
+          {{ states('sensor.homewizard_p1_active_power_w') not in ['unavailable', 'unknown'] }}
+        # HomeWizard P1 meter availability.
+
+      - name: "alfen_available"
+        unique_id: alfen_available
+        device_class: connectivity
+        state: >
+          {{ states('sensor.alfen_wallbox_status_code') not in ['unavailable', 'unknown']
+             and is_state('binary_sensor.alfen_wallbox_https_api_login_status', 'on') }}
+        # Alfen is available only when both the sensor reads and the session is active.
+
+      - name: "battery_hardware_available"
+        unique_id: battery_hardware_available
+        device_class: connectivity
+        state: >
+          {{ states('sensor.solaredge_b1_soc') not in ['unavailable', 'unknown']
+             and states('sensor.solaredge_b1_dc_power') not in ['unavailable', 'unknown'] }}
+        # True when the SolarEdge Home Battery hardware is installed and Modbus responds.
+        # Will be false until the battery is physically installed.
+
+# ── Utility meters ─────────────────────────────────────────────────────────────
+# These create energy_kwh sensors that reset daily/monthly for billing/tracking.
+utility_meter:
+  daily_solar_production:
+    source: sensor.solaredge_i1_ac_energy_kwh
+    cycle: daily
+    name: "Dagelijkse zonneproductie"
+
+  monthly_solar_production:
+    source: sensor.solaredge_i1_ac_energy_kwh
+    cycle: monthly
+    name: "Maandelijkse zonneproductie"
+
+  daily_grid_import:
+    source: sensor.homewizard_p1_total_power_import_kwh
+    cycle: daily
+    name: "Dagelijks netimport"
+
+  monthly_grid_import:
+    source: sensor.homewizard_p1_total_power_import_kwh
+    cycle: monthly
+    name: "Maandelijks netimport"
+
+  daily_grid_export:
+    source: sensor.homewizard_p1_total_power_export_kwh
+    cycle: daily
+    name: "Dagelijks netexport"
+
+  monthly_grid_export:
+    source: sensor.homewizard_p1_total_power_export_kwh
+    cycle: monthly
+    name: "Maandelijks netexport"
+
+  daily_ev_charged:
+    source: sensor.alfen_wallbox_energy_session_kwh
+    cycle: daily
+    name: "Dagelijks EV geladen"
+
+  monthly_ev_charged:
+    source: sensor.alfen_wallbox_energy_session_kwh
+    cycle: monthly
+    name: "Maandelijks EV geladen"

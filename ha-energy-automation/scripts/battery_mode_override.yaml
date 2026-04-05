@@ -2,8 +2,14 @@
 # battery_mode_override.yaml
 # ──────────────────────────────────────────────────────────────────────────────
 # Manual battery control scripts. These write to input_select.battery_desired_mode
-# which triggers the Mode Executor in 04_battery_state_machine.yaml.
-# Scripts never write directly to Modbus entities.
+# which triggers the Mode Executor in 05_battery_state_machine.yaml.
+# Scripts NEVER write directly to Modbus entities.
+#
+# FORCE modes (FORCE_CHARGE, FORCE_DISCHARGE) bypass the 5-minute rate limiter
+# in the executor so manual overrides respond immediately.
+#
+# Kill switch (input_boolean.energy_automation_enabled) is NOT required by these
+# scripts — manual overrides should work even when automation is off.
 # ──────────────────────────────────────────────────────────────────────────────
 
 reset_battery_to_self_consumption:
@@ -26,12 +32,43 @@ reset_battery_to_self_consumption:
           {{ now().strftime('%H:%M') }} → SELF_CONSUME: handmatige reset via script
   mode: single
 
+force_battery_charge_1h:
+  alias: "Batterij: forceer laden van net (1 uur)"
+  description: >
+    Forces FORCE_CHARGE mode for 1 hour, then automatically resets to SELF_CONSUME.
+    Useful for manually pre-charging before expected peak prices or before a
+    cloudy forecast period. FORCE_CHARGE bypasses rate limiting in the executor.
+  icon: mdi:battery-charging
+  sequence:
+    - service: input_select.select_option
+      target:
+        entity_id: input_select.battery_desired_mode
+      data:
+        option: "FORCE_CHARGE"
+    - service: input_text.set_value
+      target:
+        entity_id: input_text.battery_last_action
+      data:
+        value: >
+          {{ now().strftime('%H:%M') }} → FORCE_CHARGE: handmatig gestart voor 60 min
+    - service: !secret notify_target
+      data:
+        title: "🔋 Forceer laden gestart"
+        message: >
+          Batterij laadt van het net voor 60 minuten.
+          Huidige prijs: {{ states('sensor.energy_price_all_in') | float(0) | round(4) }} €/kWh.
+          {% if is_state('binary_sensor.battery_hardware_available', 'on') %}
+            SoC: {{ states('sensor.battery_soc_pct') | float(0) | round(0) }}%
+          {% endif %}
+    - delay: "01:00:00"
+    - service: script.reset_battery_to_self_consumption
+  mode: single
+
 force_battery_charge_from_grid:
-  alias: "Batterij: forceer laden van net"
+  alias: "Batterij: forceer laden van net (instelbare duur)"
   description: >
     Forces FORCE_CHARGE mode for the specified duration, then automatically
-    resets to SELF_CONSUME. Useful for manually pre-charging before expected
-    peak prices or before a cloudy forecast period.
+    resets to SELF_CONSUME. FORCE_CHARGE bypasses rate limiting.
   icon: mdi:battery-charging
   fields:
     duration_minutes:
@@ -60,7 +97,7 @@ force_battery_charge_from_grid:
         message: >
           Batterij laadt van het net voor {{ duration_minutes | default(60) }} minuten.
           Huidige prijs: {{ states('sensor.energy_price_all_in') | float(0) | round(4) }} €/kWh.
-          {% if states('binary_sensor.battery_available') == 'on' %}
+          {% if is_state('binary_sensor.battery_hardware_available', 'on') %}
             SoC: {{ states('sensor.battery_soc_pct') | float(0) | round(0) }}%
           {% endif %}
     - delay:
@@ -71,10 +108,9 @@ force_battery_charge_from_grid:
 force_battery_discharge:
   alias: "Batterij: forceer ontladen (export maximaliseren)"
   description: >
-    Forces FORCE_DISCHARGE (Maximize Export) for the specified duration,
-    then resets to SELF_CONSUME. Use during expected high-price periods to
-    maximize revenue from stored energy.
+    Forces FORCE_DISCHARGE for the specified duration, then resets to SELF_CONSUME.
     Guard: requires battery SOC to be above minimum before activating.
+    FORCE_DISCHARGE bypasses rate limiting.
   icon: mdi:battery-arrow-down
   fields:
     duration_minutes:
@@ -88,7 +124,7 @@ force_battery_discharge:
   sequence:
     - condition: template
       value_template: >
-        {% if states('binary_sensor.battery_available') != 'on' %}
+        {% if not is_state('binary_sensor.battery_hardware_available', 'on') %}
           false
         {% else %}
           {% set soc = states('sensor.battery_soc_pct') | float(0) %}
@@ -112,7 +148,7 @@ force_battery_discharge:
         message: >
           Batterij exporteert maximaal voor {{ duration_minutes | default(120) }} minuten.
           Huidige prijs: {{ states('sensor.energy_price_all_in') | float(0) | round(4) }} €/kWh.
-          {% if states('binary_sensor.battery_available') == 'on' %}
+          {% if is_state('binary_sensor.battery_hardware_available', 'on') %}
             SoC: {{ states('sensor.battery_soc_pct') | float(0) | round(0) }}%
           {% endif %}
     - delay:
@@ -121,11 +157,14 @@ force_battery_discharge:
   mode: single
 
 hold_battery:
-  alias: "Batterij: HOLD modus (alleen zonne-energie laden)"
+  alias: "Batterij: HOLD modus (laden via zon, niet ontladen)"
   description: >
-    Sets battery to HOLD mode (Charge from PV Only).
-    Battery will not discharge but will charge from solar if available.
-    Useful when grid is congested or you want to preserve stored energy.
+    Sets battery to HOLD mode (Maximize Self Consumption — charges from solar,
+    does NOT actively discharge to cover household load).
+    Useful when you want to preserve stored energy for a peak price window.
+    The battery will still charge from solar if there is surplus.
+    NOTE: This is different from "Charge from PV Only" — HOLD allows the
+    battery to stay charged while solar fills it from surplus.
   icon: mdi:battery-lock
   sequence:
     - service: input_select.select_option
