@@ -109,7 +109,7 @@ template:
             false
           {% else %}
             {% set age = (now() - states.sensor.nord_pool_nl_current_price.last_updated).total_seconds() %}
-            {{ age < 5400 }}
+            {% if age < 5400 %}true{% else %}false{% endif %}
           {% endif %}
         # True = price data is fresh (< 90 min old). Always check this before acting.
 

@@ -50,15 +50,15 @@ jobs:
           # Exclude placeholders, comments, and known non-secret patterns
           FOUND=0
           while IFS= read -r -d '' file; do
-            # grep for long alphanum strings not in comments and not 'YOUR_' placeholders
-            if grep -Pn '(?<!#.*)(?<!YOUR_)[A-Za-z0-9]{32,}' "$file" | \
+            # grep for long alphanum strings on non-comment lines and not 'YOUR_' placeholders
+            if grep -Pn '^[^#]*[A-Za-z0-9]{32,}' "$file" | \
                grep -v 'YOUR_' | \
                grep -v '#' | \
                grep -v 'description:' | \
                grep -v '^\s*#' | \
                grep -qP '[A-Za-z0-9]{32,}'; then
               echo "⚠️  Potential API key found in: $file"
-              grep -Pn '(?<!#.*)(?<!YOUR_)[A-Za-z0-9]{32,}' "$file" | \
+              grep -Pn '^[^#]*[A-Za-z0-9]{32,}' "$file" | \
                 grep -v 'YOUR_' | grep -v '^\s*#' | head -5
               FOUND=1
             fi

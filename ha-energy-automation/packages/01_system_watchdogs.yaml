@@ -227,7 +227,6 @@ automation:
       - platform: state
         entity_id: sensor.solaredge_i1_ac_power
         from: "unavailable"
-        to: ~
     condition:
       - condition: template
         value_template: >
