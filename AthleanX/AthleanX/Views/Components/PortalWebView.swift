@@ -101,13 +101,10 @@ struct PortalWebView: UIViewRepresentable {
     }
 }
 
-/// Standalone screen presenting the full portal in a navigation context
-/// with a back button and share sheet.
+/// Standalone screen presenting the full portal in a navigation context.
 struct PortalScreenView: View {
     let title: String
     let path: String
-    @State private var currentURL: URL?
-    @State private var showShareSheet = false
 
     init(title: String = "Portal", path: String = "/dashboard") {
         self.title = title
@@ -115,21 +112,9 @@ struct PortalScreenView: View {
     }
 
     var body: some View {
-        PortalWebView(path: path) { url in
-            currentURL = url
-        }
-        .ignoresSafeArea(edges: .bottom)
-        .navigationTitle(title)
-        .navigationBarTitleDisplayMode(.inline)
-        .toolbar {
-            ToolbarItem(placement: .navigationBarTrailing) {
-                if let url = currentURL {
-                    ShareLink(item: url) {
-                        Image(systemName: "square.and.arrow.up")
-                            .foregroundColor(Constants.Colors.athleanRed)
-                    }
-                }
-            }
-        }
+        PortalWebView(path: path)
+            .ignoresSafeArea(edges: .bottom)
+            .navigationTitle(title)
+            .navigationBarTitleDisplayMode(.inline)
     }
 }
