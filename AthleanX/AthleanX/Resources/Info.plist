@@ -44,6 +44,8 @@
 			</dict>
 		</dict>
 	</dict>
+	<key>NSFaceIDUsageDescription</key>
+	<string>Sign in to ATHLEAN-X faster using Face ID.</string>
 	<key>NSCameraUsageDescription</key>
 	<string>Used to capture progress photos for your fitness journey.</string>
 	<key>NSPhotoLibraryUsageDescription</key>

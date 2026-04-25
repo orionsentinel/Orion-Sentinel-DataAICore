@@ -55,7 +55,6 @@ struct LoginView: View {
 
     var body: some View {
         ZStack {
-            // Background
             Color.black.ignoresSafeArea()
             backgroundPattern
 
@@ -65,17 +64,34 @@ struct LoginView: View {
                     logoSection
                     Spacer(minLength: 48)
                     formCard
-                    Spacer(minLength: 32)
+                    Spacer(minLength: 20)
+                    // Biometric button — shown when credentials are already saved
+                    if authViewModel.canUseBiometrics {
+                        biometricButton
+                    }
+                    Spacer(minLength: 24)
                     footerLinks
                     Spacer(minLength: 40)
                 }
             }
             .scrollDismissesKeyboard(.interactively)
 
-            // Full-screen loading overlay
             if authViewModel.isLoading {
                 loadingOverlay
             }
+        }
+        // Auto-trigger biometrics when the view appears if session expired
+        .onAppear {
+            if authViewModel.showBiometricPrompt {
+                Task { await authViewModel.loginWithBiometrics() }
+            }
+        }
+        // Offer to enable Face ID / Touch ID after a successful password login
+        .alert("Use \(authViewModel.biometryLabel) next time?", isPresented: $authViewModel.offerBiometricSave) {
+            Button("Enable \(authViewModel.biometryLabel)") { authViewModel.enableBiometricSave() }
+            Button("Not Now", role: .cancel) { authViewModel.declineBiometricSave() }
+        } message: {
+            Text("Sign in faster by using \(authViewModel.biometryLabel) instead of your password.")
         }
     }
 
@@ -245,6 +261,29 @@ struct LoginView: View {
         }
         .disabled(authViewModel.isLoading)
         .padding(.top, 4)
+    }
+
+    private var biometricButton: some View {
+        Button {
+            Task { await authViewModel.loginWithBiometrics() }
+        } label: {
+            HStack(spacing: 12) {
+                Image(systemName: authViewModel.biometryIcon)
+                    .font(.title3)
+                Text("Sign in with \(authViewModel.biometryLabel)")
+                    .font(.subheadline.bold())
+            }
+            .frame(maxWidth: .infinity)
+            .padding(.vertical, 14)
+            .background(Color(white: 0.12))
+            .foregroundColor(.white)
+            .cornerRadius(12)
+            .overlay(
+                RoundedRectangle(cornerRadius: 12)
+                    .stroke(Color(white: 0.25), lineWidth: 1)
+            )
+        }
+        .padding(.horizontal, 24)
     }
 
     private var footerLinks: some View {

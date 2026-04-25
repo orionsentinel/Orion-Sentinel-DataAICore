@@ -48,6 +48,7 @@
 		AA000039 /* EmptyStateView.swift in Sources */ = {isa = PBXBuildFile; fileRef = BB000039 /* EmptyStateView.swift */; };
 		AA000040 /* PrivacyInfo.xcprivacy in Resources */ = {isa = PBXBuildFile; fileRef = BB000040 /* PrivacyInfo.xcprivacy */; };
 		AA000041 /* PortalAuthBridge.swift in Sources */ = {isa = PBXBuildFile; fileRef = BB000041 /* PortalAuthBridge.swift */; };
+		AA000042 /* BiometricAuthService.swift in Sources */ = {isa = PBXBuildFile; fileRef = BB000042 /* BiometricAuthService.swift */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXFileReference section */
@@ -92,6 +93,7 @@
 		BB000039 /* EmptyStateView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = EmptyStateView.swift; sourceTree = "<group>"; };
 		BB000040 /* PrivacyInfo.xcprivacy */ = {isa = PBXFileReference; lastKnownFileType = text.plist.xml; path = PrivacyInfo.xcprivacy; sourceTree = "<group>"; };
 		BB000041 /* PortalAuthBridge.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PortalAuthBridge.swift; sourceTree = "<group>"; };
+		BB000042 /* BiometricAuthService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BiometricAuthService.swift; sourceTree = "<group>"; };
 		CC000001 /* AthleanX.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = AthleanX.app; sourceTree = BUILT_PRODUCTS_DIR; };
 /* End PBXFileReference section */
 
@@ -150,6 +152,7 @@
 				BB000034 /* WorkoutReminderService.swift */,
 				BB000035 /* CacheService.swift */,
 				BB000041 /* PortalAuthBridge.swift */,
+				BB000042 /* BiometricAuthService.swift */,
 			);
 			path = Services;
 			sourceTree = "<group>";
@@ -406,6 +409,7 @@
 				AA000038 /* PortalWebView.swift in Sources */,
 				AA000039 /* EmptyStateView.swift in Sources */,
 				AA000041 /* PortalAuthBridge.swift in Sources */,
+				AA000042 /* BiometricAuthService.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
