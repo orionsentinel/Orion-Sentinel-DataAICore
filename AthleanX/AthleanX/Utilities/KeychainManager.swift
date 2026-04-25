@@ -36,6 +36,10 @@ final class KeychainManager {
         return value
     }
 
+    func hasValue(for key: String) -> Bool {
+        (try? retrieve(for: key)) != nil
+    }
+
     func delete(for key: String) {
         let query: [String: Any] = [
             kSecClass as String: kSecClassGenericPassword,

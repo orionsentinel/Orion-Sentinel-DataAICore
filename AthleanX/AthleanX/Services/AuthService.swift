@@ -1,64 +1,34 @@
 import Foundation
-import Combine
+import WebKit
 
 final class AuthService {
     static let shared = AuthService()
     private init() {}
 
-    struct LoginRequest: Encodable {
-        let email: String
-        let password: String
-        let rememberMe: Bool
+    // MARK: - Login (portal cookie auth — no REST API)
+
+    func login(email: String, password: String) async throws {
+        let cookies = try await PortalAuthBridge.shared.authenticate(email: email, password: password)
+
+        // Persist a marker so we know the user is logged in across launches
+        let cookieNames = cookies.map { $0.name }.joined(separator: ",")
+        try KeychainManager.shared.save(cookieNames, for: Constants.Keychain.accessTokenKey)
+        try KeychainManager.shared.save(email, for: Constants.Keychain.userIdKey)
     }
 
-    struct LoginResponse: Decodable {
-        let user: User
-        let accessToken: String
-        let refreshToken: String
-        let expiresIn: Int
-    }
-
-    struct RefreshRequest: Encodable {
-        let refreshToken: String
-    }
-
-    struct RefreshResponse: Decodable {
-        let accessToken: String
-        let expiresIn: Int
-    }
-
-    func login(email: String, password: String, rememberMe: Bool = true) async throws -> User {
-        let body = LoginRequest(email: email, password: password, rememberMe: rememberMe)
-        let response: LoginResponse = try await APIClient.shared.request(.post("/auth/login", body: body))
-
-        try KeychainManager.shared.save(response.accessToken, for: Constants.Keychain.accessTokenKey)
-        try KeychainManager.shared.save(response.refreshToken, for: Constants.Keychain.refreshTokenKey)
-        try KeychainManager.shared.save(String(response.user.id), for: Constants.Keychain.userIdKey)
-
-        return response.user
-    }
-
-    func logout() async throws {
-        try? await APIClient.shared.requestVoid(.post("/auth/logout", body: EmptyBody()))
+    func logout() async {
+        PortalAuthBridge.shared.clearSession()
         KeychainManager.shared.clearAll()
     }
 
-    func refreshToken() async throws {
-        guard let refreshToken = try? KeychainManager.shared.retrieve(for: Constants.Keychain.refreshTokenKey) else {
-            throw APIError.unauthorized
+    func restoreSession() async -> Bool {
+        guard KeychainManager.shared.hasValue(for: Constants.Keychain.accessTokenKey) else {
+            return false
         }
-        let body = RefreshRequest(refreshToken: refreshToken)
-        let response: RefreshResponse = try await APIClient.shared.request(.post("/auth/refresh", body: body))
-        try KeychainManager.shared.save(response.accessToken, for: Constants.Keychain.accessTokenKey)
+        return await PortalAuthBridge.shared.restoreSession()
     }
 
-    func fetchCurrentUser() async throws -> User {
-        try await APIClient.shared.request(.get("/auth/me"))
-    }
-
-    var isLoggedIn: Bool {
-        (try? KeychainManager.shared.retrieve(for: Constants.Keychain.accessTokenKey)) != nil
+    var savedEmail: String? {
+        try? KeychainManager.shared.retrieve(for: Constants.Keychain.userIdKey)
     }
 }
-
-struct EmptyBody: Encodable {}
