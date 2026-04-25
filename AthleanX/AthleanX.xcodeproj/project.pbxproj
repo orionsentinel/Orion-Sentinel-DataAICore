@@ -40,6 +40,13 @@
 		AA000031 /* KeychainManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = BB000031 /* KeychainManager.swift */; };
 		AA000032 /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = BB000032 /* Assets.xcassets */; };
 		AA000033 /* Info.plist in Resources */ = {isa = PBXBuildFile; fileRef = BB000033 /* Info.plist */; };
+		AA000034 /* WorkoutReminderService.swift in Sources */ = {isa = PBXBuildFile; fileRef = BB000034 /* WorkoutReminderService.swift */; };
+		AA000035 /* CacheService.swift in Sources */ = {isa = PBXBuildFile; fileRef = BB000035 /* CacheService.swift */; };
+		AA000036 /* ProgramSelectorView.swift in Sources */ = {isa = PBXBuildFile; fileRef = BB000036 /* ProgramSelectorView.swift */; };
+		AA000037 /* AbGeneratorView.swift in Sources */ = {isa = PBXBuildFile; fileRef = BB000037 /* AbGeneratorView.swift */; };
+		AA000038 /* PortalWebView.swift in Sources */ = {isa = PBXBuildFile; fileRef = BB000038 /* PortalWebView.swift */; };
+		AA000039 /* EmptyStateView.swift in Sources */ = {isa = PBXBuildFile; fileRef = BB000039 /* EmptyStateView.swift */; };
+		AA000040 /* PrivacyInfo.xcprivacy in Resources */ = {isa = PBXBuildFile; fileRef = BB000040 /* PrivacyInfo.xcprivacy */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXFileReference section */
@@ -76,6 +83,13 @@
 		BB000031 /* KeychainManager.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = KeychainManager.swift; sourceTree = "<group>"; };
 		BB000032 /* Assets.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; path = Assets.xcassets; sourceTree = "<group>"; };
 		BB000033 /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist.xml; path = Info.plist; sourceTree = "<group>"; };
+		BB000034 /* WorkoutReminderService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WorkoutReminderService.swift; sourceTree = "<group>"; };
+		BB000035 /* CacheService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CacheService.swift; sourceTree = "<group>"; };
+		BB000036 /* ProgramSelectorView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ProgramSelectorView.swift; sourceTree = "<group>"; };
+		BB000037 /* AbGeneratorView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AbGeneratorView.swift; sourceTree = "<group>"; };
+		BB000038 /* PortalWebView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PortalWebView.swift; sourceTree = "<group>"; };
+		BB000039 /* EmptyStateView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = EmptyStateView.swift; sourceTree = "<group>"; };
+		BB000040 /* PrivacyInfo.xcprivacy */ = {isa = PBXFileReference; lastKnownFileType = text.plist.xml; path = PrivacyInfo.xcprivacy; sourceTree = "<group>"; };
 		CC000001 /* AthleanX.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = AthleanX.app; sourceTree = BUILT_PRODUCTS_DIR; };
 /* End PBXFileReference section */
 
@@ -131,6 +145,8 @@
 				BB000008 /* AuthService.swift */,
 				BB000009 /* WorkoutService.swift */,
 				BB000010 /* NutritionService.swift */,
+				BB000034 /* WorkoutReminderService.swift */,
+				BB000035 /* CacheService.swift */,
 			);
 			path = Services;
 			sourceTree = "<group>";
@@ -177,6 +193,8 @@
 			children = (
 				BB000018 /* AthleanTabView.swift */,
 				BB000024 /* VideoPlayerView.swift */,
+				BB000038 /* PortalWebView.swift */,
+				BB000039 /* EmptyStateView.swift */,
 			);
 			path = Components;
 			sourceTree = "<group>";
@@ -194,6 +212,7 @@
 			children = (
 				BB000020 /* ProgramLibraryView.swift */,
 				BB000021 /* ProgramDetailView.swift */,
+				BB000036 /* ProgramSelectorView.swift */,
 			);
 			path = Programs;
 			sourceTree = "<group>";
@@ -203,6 +222,7 @@
 			children = (
 				BB000022 /* ActiveWorkoutView.swift */,
 				BB000023 /* ExerciseLibraryView.swift */,
+				BB000037 /* AbGeneratorView.swift */,
 			);
 			path = Workout;
 			sourceTree = "<group>";
@@ -254,6 +274,7 @@
 			children = (
 				BB000032 /* Assets.xcassets */,
 				BB000033 /* Info.plist */,
+				BB000040 /* PrivacyInfo.xcprivacy */,
 			);
 			path = Resources;
 			sourceTree = "<group>";
@@ -333,6 +354,7 @@
 			buildActionMask = 2147483647;
 			files = (
 				AA000032 /* Assets.xcassets in Resources */,
+				AA000040 /* PrivacyInfo.xcprivacy in Resources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -374,6 +396,12 @@
 				AA000029 /* Constants.swift in Sources */,
 				AA000030 /* Extensions.swift in Sources */,
 				AA000031 /* KeychainManager.swift in Sources */,
+				AA000034 /* WorkoutReminderService.swift in Sources */,
+				AA000035 /* CacheService.swift in Sources */,
+				AA000036 /* ProgramSelectorView.swift in Sources */,
+				AA000037 /* AbGeneratorView.swift in Sources */,
+				AA000038 /* PortalWebView.swift in Sources */,
+				AA000039 /* EmptyStateView.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -506,6 +534,7 @@
 				DEVELOPMENT_ASSET_PATHS = "";
 				ENABLE_PREVIEWS = YES;
 				GENERATE_INFOPLIST_FILE = NO;
+				CODE_SIGN_ENTITLEMENTS = AthleanX/Resources/AthleanX.entitlements;
 				INFOPLIST_FILE = AthleanX/Resources/Info.plist;
 				IPHONEOS_DEPLOYMENT_TARGET = 17.0;
 				LD_RUNPATH_SEARCH_PATHS = (
@@ -533,6 +562,7 @@
 				DEVELOPMENT_ASSET_PATHS = "";
 				ENABLE_PREVIEWS = YES;
 				GENERATE_INFOPLIST_FILE = NO;
+				CODE_SIGN_ENTITLEMENTS = AthleanX/Resources/AthleanX.entitlements;
 				INFOPLIST_FILE = AthleanX/Resources/Info.plist;
 				IPHONEOS_DEPLOYMENT_TARGET = 17.0;
 				LD_RUNPATH_SEARCH_PATHS = (

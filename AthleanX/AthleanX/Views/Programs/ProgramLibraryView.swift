@@ -3,6 +3,7 @@ import SwiftUI
 struct ProgramLibraryView: View {
     @StateObject private var viewModel = ProgramViewModel()
     @State private var showFilter = false
+    @State private var showSelector = false
 
     var body: some View {
         NavigationStack {
@@ -10,6 +11,13 @@ struct ProgramLibraryView: View {
                 Constants.Colors.athleanDark.ignoresSafeArea()
                 if viewModel.isLoading && viewModel.programs.isEmpty {
                     ProgressView().tint(Constants.Colors.athleanRed)
+                } else if viewModel.programs.isEmpty {
+                    EmptyStateView(
+                        icon: "list.bullet.clipboard",
+                        title: "No Programs Found",
+                        message: "Programs will appear here once you're connected.",
+                        actionTitle: "Refresh"
+                    ) { Task { await viewModel.loadPrograms() } }
                 } else {
                     programList
                 }
@@ -17,6 +25,18 @@ struct ProgramLibraryView: View {
             .navigationTitle("Programs")
             .navigationBarTitleDisplayMode(.large)
             .toolbar {
+                ToolbarItem(placement: .navigationBarLeading) {
+                    Button {
+                        showSelector = true
+                    } label: {
+                        HStack(spacing: 4) {
+                            Image(systemName: "wand.and.stars")
+                            Text("Find Mine")
+                                .font(.caption.bold())
+                        }
+                        .foregroundColor(Constants.Colors.athleanRed)
+                    }
+                }
                 ToolbarItem(placement: .navigationBarTrailing) {
                     Button {
                         showFilter.toggle()
@@ -30,6 +50,9 @@ struct ProgramLibraryView: View {
             }
             .sheet(isPresented: $showFilter) {
                 ProgramFilterSheet(filter: $viewModel.filter)
+            }
+            .sheet(isPresented: $showSelector) {
+                ProgramSelectorView()
             }
             .task { await viewModel.loadPrograms() }
             .refreshable { await viewModel.loadPrograms() }

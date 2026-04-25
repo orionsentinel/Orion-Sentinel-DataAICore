@@ -1,7 +1,7 @@
 import SwiftUI
 import Charts
 
-struct ProgressView: View {
+struct ProgressTrackingView: View {
     @StateObject private var viewModel = ProgressViewModel()
 
     var body: some View {

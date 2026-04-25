@@ -25,17 +25,23 @@ struct MainTabView: View {
                 }
                 .tag(2)
 
-            ProgressView()
+            ExerciseLibraryView()
                 .tabItem {
-                    Label("Progress", systemImage: selectedTab == 3 ? "chart.line.uptrend.xyaxis" : "chart.line.uptrend.xyaxis")
+                    Label("Exercises", systemImage: "dumbbell.fill")
                 }
                 .tag(3)
 
-            ProfileView()
+            ProgressTrackingView()
                 .tabItem {
-                    Label("Profile", systemImage: selectedTab == 4 ? "person.fill" : "person")
+                    Label("Progress", systemImage: "chart.line.uptrend.xyaxis")
                 }
                 .tag(4)
+
+            ProfileView()
+                .tabItem {
+                    Label("Profile", systemImage: selectedTab == 5 ? "person.fill" : "person")
+                }
+                .tag(5)
         }
         .tint(Constants.Colors.athleanRed)
         .preferredColorScheme(.dark)

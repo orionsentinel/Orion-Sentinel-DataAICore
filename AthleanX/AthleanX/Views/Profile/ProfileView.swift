@@ -3,9 +3,10 @@ import SwiftUI
 struct ProfileView: View {
     @EnvironmentObject var authViewModel: AuthViewModel
     @State private var showLogoutConfirmation = false
-    @State private var notificationsEnabled = true
-    @State private var workoutReminders = true
+    @AppStorage(Constants.UserDefaults.notificationsEnabled) private var notificationsEnabled = false
+    @AppStorage(Constants.UserDefaults.workoutReminderTime) private var reminderHour = 7
     @AppStorage(Constants.UserDefaults.preferredWeightUnit) private var weightUnit = "lbs"
+    @State private var workoutReminders = false
 
     var body: some View {
         NavigationStack {
@@ -102,12 +103,33 @@ struct ProfileView: View {
                     .foregroundColor(.white)
             }
             .tint(Constants.Colors.athleanRed)
-
-            Toggle(isOn: $workoutReminders) {
-                Label("Workout Reminders", systemImage: "clock.fill")
-                    .foregroundColor(.white)
+            .onChange(of: notificationsEnabled) { _, enabled in
+                Task {
+                    if enabled {
+                        let granted = await WorkoutReminderService.shared.requestPermission()
+                        if !granted { notificationsEnabled = false }
+                    } else {
+                        await WorkoutReminderService.shared.cancelAll()
+                    }
+                }
             }
-            .tint(Constants.Colors.athleanRed)
+
+            if notificationsEnabled {
+                HStack {
+                    Label("Reminder Time", systemImage: "clock.fill")
+                        .foregroundColor(.white)
+                    Spacer()
+                    Picker("", selection: $reminderHour) {
+                        ForEach([6, 7, 8, 9, 10, 12, 17, 18, 19, 20], id: \.self) { h in
+                            Text(hourLabel(h)).tag(h)
+                        }
+                    }
+                    .tint(Constants.Colors.athleanRed)
+                    .onChange(of: reminderHour) { _, h in
+                        Task { await WorkoutReminderService.shared.scheduleDaily(at: h, minute: 0, workoutName: nil) }
+                    }
+                }
+            }
 
             HStack {
                 Label("Weight Unit", systemImage: "scalemass.fill")
@@ -153,6 +175,11 @@ struct ProfileView: View {
             }
         }
         .listRowBackground(Constants.Colors.cardBackground)
+    }
+
+    private func hourLabel(_ hour: Int) -> String {
+        let h = hour % 12 == 0 ? 12 : hour % 12
+        return "\(h):00 \(hour < 12 ? "AM" : "PM")"
     }
 }
 
