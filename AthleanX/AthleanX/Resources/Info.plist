@@ -46,6 +46,10 @@
 	</dict>
 	<key>NSFaceIDUsageDescription</key>
 	<string>Sign in to ATHLEAN-X faster using Face ID.</string>
+	<key>NSHealthShareUsageDescription</key>
+	<string>ATHLEAN-X reads your activity, steps, and body metrics to display your daily progress.</string>
+	<key>NSHealthUpdateUsageDescription</key>
+	<string>ATHLEAN-X writes completed workouts, weight, and body fat to Apple Health to keep your fitness data in sync.</string>
 	<key>NSCameraUsageDescription</key>
 	<string>Used to capture progress photos for your fitness journey.</string>
 	<key>NSPhotoLibraryUsageDescription</key>

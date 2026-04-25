@@ -49,6 +49,8 @@
 		AA000040 /* PrivacyInfo.xcprivacy in Resources */ = {isa = PBXBuildFile; fileRef = BB000040 /* PrivacyInfo.xcprivacy */; };
 		AA000041 /* PortalAuthBridge.swift in Sources */ = {isa = PBXBuildFile; fileRef = BB000041 /* PortalAuthBridge.swift */; };
 		AA000042 /* BiometricAuthService.swift in Sources */ = {isa = PBXBuildFile; fileRef = BB000042 /* BiometricAuthService.swift */; };
+		AA000043 /* HealthKitService.swift in Sources */ = {isa = PBXBuildFile; fileRef = BB000043 /* HealthKitService.swift */; };
+		AA000044 /* HealthKit.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = BB000044 /* HealthKit.framework */; settings = {ATTRIBUTES = (Required, ); }; };
 /* End PBXBuildFile section */
 
 /* Begin PBXFileReference section */
@@ -94,6 +96,8 @@
 		BB000040 /* PrivacyInfo.xcprivacy */ = {isa = PBXFileReference; lastKnownFileType = text.plist.xml; path = PrivacyInfo.xcprivacy; sourceTree = "<group>"; };
 		BB000041 /* PortalAuthBridge.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PortalAuthBridge.swift; sourceTree = "<group>"; };
 		BB000042 /* BiometricAuthService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BiometricAuthService.swift; sourceTree = "<group>"; };
+		BB000043 /* HealthKitService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HealthKitService.swift; sourceTree = "<group>"; };
+		BB000044 /* HealthKit.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = HealthKit.framework; path = System/Library/Frameworks/HealthKit.framework; sourceTree = SDKROOT; };
 		CC000001 /* AthleanX.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = AthleanX.app; sourceTree = BUILT_PRODUCTS_DIR; };
 /* End PBXFileReference section */
 
@@ -102,6 +106,7 @@
 			isa = PBXFrameworksBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
+				AA000044 /* HealthKit.framework in Frameworks */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -153,8 +158,17 @@
 				BB000035 /* CacheService.swift */,
 				BB000041 /* PortalAuthBridge.swift */,
 				BB000042 /* BiometricAuthService.swift */,
+				BB000043 /* HealthKitService.swift */,
 			);
 			path = Services;
+			sourceTree = "<group>";
+		};
+		EE000030 /* Frameworks */ = {
+			isa = PBXGroup;
+			children = (
+				BB000044 /* HealthKit.framework */,
+			);
+			name = Frameworks;
 			sourceTree = "<group>";
 		};
 		EE000013 /* ViewModels */ = {
@@ -297,6 +311,7 @@
 			isa = PBXGroup;
 			children = (
 				EE000001 /* AthleanX */,
+				EE000030 /* Frameworks */,
 				EE000099 /* Products */,
 			);
 			sourceTree = "<group>";
@@ -410,6 +425,7 @@
 				AA000039 /* EmptyStateView.swift in Sources */,
 				AA000041 /* PortalAuthBridge.swift in Sources */,
 				AA000042 /* BiometricAuthService.swift in Sources */,
+				AA000043 /* HealthKitService.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};

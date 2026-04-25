@@ -247,7 +247,19 @@ final class WorkoutSessionViewModel: ObservableObject {
             exerciseLogs: exerciseLogs
         )
         try? await WorkoutService.shared.completeWorkout(workoutDayId: workoutDay.id, history: history)
+        await saveToHealthKit()
         isSaving = false
+    }
+
+    private func saveToHealthKit() async {
+        guard elapsedSeconds > 0 else { return }
+        // ~6.5 kcal/min is a reasonable estimate for moderate-intensity strength training
+        let estimatedKcal = max(1, Double(elapsedSeconds) / 60.0 * 6.5)
+        try? await HealthKitService.shared.saveWorkout(
+            start: startTime,
+            duration: elapsedSeconds,
+            estimatedCalories: estimatedKcal
+        )
     }
 
     // MARK: - Helpers

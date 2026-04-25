@@ -39,6 +39,9 @@ struct ProgressTrackingView: View {
         ScrollView {
             VStack(alignment: .leading, spacing: Constants.UI.sectionSpacing) {
                 statsRow
+                if viewModel.isHealthAvailable {
+                    healthStatsSection
+                }
                 progressPhotoSection
                 if !viewModel.weightHistory.isEmpty {
                     weightChart
@@ -57,6 +60,65 @@ struct ProgressTrackingView: View {
             statCard(value: "\(viewModel.totalWorkoutsThisMonth)", label: "This Month", icon: "calendar.badge.checkmark")
             statCard(value: "\(viewModel.streakDays)", label: "Day Streak", icon: "flame.fill", color: .orange)
         }
+    }
+
+    // MARK: - Apple Health section
+
+    private var healthStatsSection: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            HStack(spacing: 6) {
+                Image(systemName: "heart.fill")
+                    .foregroundColor(.red)
+                    .font(.caption)
+                Text("TODAY FROM APPLE HEALTH")
+                    .font(.caption.bold())
+                    .foregroundColor(Constants.Colors.textSecondary)
+                    .tracking(1)
+            }
+
+            HStack(spacing: 10) {
+                healthStatCell(
+                    value: "\(Int(viewModel.healthActiveCalories))",
+                    unit: "kcal",
+                    label: "Active Cal",
+                    icon: "flame.fill",
+                    color: .orange
+                )
+                healthStatCell(
+                    value: "\(Int(viewModel.healthRestingCalories))",
+                    unit: "kcal",
+                    label: "Resting Cal",
+                    icon: "moon.zzz.fill",
+                    color: .blue
+                )
+                healthStatCell(
+                    value: "\(Int(viewModel.healthSteps))",
+                    unit: "steps",
+                    label: "Steps",
+                    icon: "figure.walk",
+                    color: Constants.Colors.success
+                )
+            }
+        }
+        .cardStyle()
+    }
+
+    private func healthStatCell(value: String, unit: String, label: String, icon: String, color: Color) -> some View {
+        VStack(spacing: 4) {
+            Image(systemName: icon)
+                .font(.body)
+                .foregroundColor(color)
+            Text(value)
+                .font(.system(size: 20, weight: .black).monospacedDigit())
+                .foregroundColor(.white)
+            Text(unit)
+                .font(.caption2.bold())
+                .foregroundColor(color)
+            Text(label)
+                .font(.caption2)
+                .foregroundColor(Constants.Colors.textSecondary)
+        }
+        .frame(maxWidth: .infinity)
     }
 
     private func statCard(value: String, label: String, icon: String, color: Color = Constants.Colors.athleanRed) -> some View {
@@ -307,6 +369,7 @@ struct AddProgressEntryView: View {
                     .ignoresSafeArea()
             }
             .photosPicker(isPresented: $showLibraryPicker, selection: $libraryItem, matching: .images)
+            .onAppear { prefillFromHealthKit() }
             .onChange(of: cameraImage) { _, img in
                 guard let img else { return }
                 pendingPhotos[activeAngle] = img
@@ -321,6 +384,20 @@ struct AddProgressEntryView: View {
                     }
                     libraryItem = nil
                 }
+            }
+        }
+    }
+
+    // MARK: - HealthKit prefill
+
+    private func prefillFromHealthKit() {
+        guard HealthKitService.shared.isAvailable else { return }
+        Task {
+            if weight.isEmpty, let (value, _) = await HealthKitService.shared.latestWeight() {
+                weight = String(format: "%.1f", value)
+            }
+            if bodyFat.isEmpty, let value = await HealthKitService.shared.latestBodyFat() {
+                bodyFat = String(format: "%.1f", value)
             }
         }
     }

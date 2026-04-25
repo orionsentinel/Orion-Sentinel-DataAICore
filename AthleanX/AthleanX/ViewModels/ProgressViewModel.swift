@@ -10,6 +10,12 @@ final class ProgressViewModel: ObservableObject {
     @Published var errorMessage: String?
     @Published var showingAddEntry = false
 
+    // Apple Health stats
+    @Published var healthActiveCalories: Double = 0
+    @Published var healthRestingCalories: Double = 0
+    @Published var healthSteps: Double = 0
+    @Published var isHealthAvailable = false
+
     private static let entriesKey = "progress.entries.v1"
 
     var weightHistory: [(Date, Double)] {
@@ -49,8 +55,11 @@ final class ProgressViewModel: ObservableObject {
     }
 
     init() {
+        isHealthAvailable = HealthKitService.shared.isAvailable
         loadPersistedEntries()
     }
+
+    // MARK: - Load
 
     func loadProgress() async {
         isLoading = true
@@ -64,12 +73,40 @@ final class ProgressViewModel: ObservableObject {
             errorMessage = "Failed to load progress data."
         }
         isLoading = false
+        await requestHealthAccessAndRefresh()
     }
+
+    // MARK: - Apple Health
+
+    func requestHealthAccessAndRefresh() async {
+        guard HealthKitService.shared.isAvailable else { return }
+        try? await HealthKitService.shared.requestAuthorization()
+        await refreshHealthStats()
+    }
+
+    func refreshHealthStats() async {
+        async let cals = HealthKitService.shared.todayActiveCalories()
+        async let resting = HealthKitService.shared.todayRestingCalories()
+        async let steps = HealthKitService.shared.todaySteps()
+        let (c, r, s) = await (cals, resting, steps)
+        healthActiveCalories = c
+        healthRestingCalories = r
+        healthSteps = s
+    }
+
+    // MARK: - Progress entries
 
     func addProgressEntry(_ entry: ProgressEntry) {
         progressEntries.append(entry)
         progressEntries.sort { $0.date > $1.date }
         persistEntries()
+        // Mirror body metrics to Apple Health
+        if let weight = entry.weight {
+            Task { try? await HealthKitService.shared.saveWeight(weight, date: entry.date) }
+        }
+        if let bf = entry.bodyFatPercentage {
+            Task { try? await HealthKitService.shared.saveBodyFat(bf, date: entry.date) }
+        }
     }
 
     func deleteProgressEntry(id: UUID) {
