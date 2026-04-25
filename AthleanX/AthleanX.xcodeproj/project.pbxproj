@@ -1,0 +1,632 @@
+// !$*UTF8*$!
+{
+	archiveVersion = 1;
+	classes = {
+	};
+	objectVersion = 56;
+	objects = {
+
+/* Begin PBXBuildFile section */
+		AA000001 /* AthleanXApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = BB000001 /* AthleanXApp.swift */; };
+		AA000002 /* User.swift in Sources */ = {isa = PBXBuildFile; fileRef = BB000002 /* User.swift */; };
+		AA000003 /* Program.swift in Sources */ = {isa = PBXBuildFile; fileRef = BB000003 /* Program.swift */; };
+		AA000004 /* Exercise.swift in Sources */ = {isa = PBXBuildFile; fileRef = BB000004 /* Exercise.swift */; };
+		AA000005 /* Nutrition.swift in Sources */ = {isa = PBXBuildFile; fileRef = BB000005 /* Nutrition.swift */; };
+		AA000006 /* Progress.swift in Sources */ = {isa = PBXBuildFile; fileRef = BB000006 /* Progress.swift */; };
+		AA000007 /* APIClient.swift in Sources */ = {isa = PBXBuildFile; fileRef = BB000007 /* APIClient.swift */; };
+		AA000008 /* AuthService.swift in Sources */ = {isa = PBXBuildFile; fileRef = BB000008 /* AuthService.swift */; };
+		AA000009 /* WorkoutService.swift in Sources */ = {isa = PBXBuildFile; fileRef = BB000009 /* WorkoutService.swift */; };
+		AA000010 /* NutritionService.swift in Sources */ = {isa = PBXBuildFile; fileRef = BB000010 /* NutritionService.swift */; };
+		AA000011 /* AuthViewModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = BB000011 /* AuthViewModel.swift */; };
+		AA000012 /* DashboardViewModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = BB000012 /* DashboardViewModel.swift */; };
+		AA000013 /* ProgramViewModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = BB000013 /* ProgramViewModel.swift */; };
+		AA000014 /* WorkoutSessionViewModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = BB000014 /* WorkoutSessionViewModel.swift */; };
+		AA000015 /* NutritionViewModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = BB000015 /* NutritionViewModel.swift */; };
+		AA000016 /* ProgressViewModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = BB000016 /* ProgressViewModel.swift */; };
+		AA000017 /* OnboardingView.swift in Sources */ = {isa = PBXBuildFile; fileRef = BB000017 /* OnboardingView.swift */; };
+		AA000018 /* AthleanTabView.swift in Sources */ = {isa = PBXBuildFile; fileRef = BB000018 /* AthleanTabView.swift */; };
+		AA000019 /* DashboardView.swift in Sources */ = {isa = PBXBuildFile; fileRef = BB000019 /* DashboardView.swift */; };
+		AA000020 /* ProgramLibraryView.swift in Sources */ = {isa = PBXBuildFile; fileRef = BB000020 /* ProgramLibraryView.swift */; };
+		AA000021 /* ProgramDetailView.swift in Sources */ = {isa = PBXBuildFile; fileRef = BB000021 /* ProgramDetailView.swift */; };
+		AA000022 /* ActiveWorkoutView.swift in Sources */ = {isa = PBXBuildFile; fileRef = BB000022 /* ActiveWorkoutView.swift */; };
+		AA000023 /* ExerciseLibraryView.swift in Sources */ = {isa = PBXBuildFile; fileRef = BB000023 /* ExerciseLibraryView.swift */; };
+		AA000024 /* VideoPlayerView.swift in Sources */ = {isa = PBXBuildFile; fileRef = BB000024 /* VideoPlayerView.swift */; };
+		AA000025 /* NutritionView.swift in Sources */ = {isa = PBXBuildFile; fileRef = BB000025 /* NutritionView.swift */; };
+		AA000026 /* ProgressView.swift in Sources */ = {isa = PBXBuildFile; fileRef = BB000026 /* ProgressView.swift */; };
+		AA000027 /* CommunityView.swift in Sources */ = {isa = PBXBuildFile; fileRef = BB000027 /* CommunityView.swift */; };
+		AA000028 /* ProfileView.swift in Sources */ = {isa = PBXBuildFile; fileRef = BB000028 /* ProfileView.swift */; };
+		AA000029 /* Constants.swift in Sources */ = {isa = PBXBuildFile; fileRef = BB000029 /* Constants.swift */; };
+		AA000030 /* Extensions.swift in Sources */ = {isa = PBXBuildFile; fileRef = BB000030 /* Extensions.swift */; };
+		AA000031 /* KeychainManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = BB000031 /* KeychainManager.swift */; };
+		AA000032 /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = BB000032 /* Assets.xcassets */; };
+		AA000033 /* Info.plist in Resources */ = {isa = PBXBuildFile; fileRef = BB000033 /* Info.plist */; };
+		AA000034 /* WorkoutReminderService.swift in Sources */ = {isa = PBXBuildFile; fileRef = BB000034 /* WorkoutReminderService.swift */; };
+		AA000035 /* CacheService.swift in Sources */ = {isa = PBXBuildFile; fileRef = BB000035 /* CacheService.swift */; };
+		AA000036 /* ProgramSelectorView.swift in Sources */ = {isa = PBXBuildFile; fileRef = BB000036 /* ProgramSelectorView.swift */; };
+		AA000037 /* AbGeneratorView.swift in Sources */ = {isa = PBXBuildFile; fileRef = BB000037 /* AbGeneratorView.swift */; };
+		AA000038 /* PortalWebView.swift in Sources */ = {isa = PBXBuildFile; fileRef = BB000038 /* PortalWebView.swift */; };
+		AA000039 /* EmptyStateView.swift in Sources */ = {isa = PBXBuildFile; fileRef = BB000039 /* EmptyStateView.swift */; };
+		AA000040 /* PrivacyInfo.xcprivacy in Resources */ = {isa = PBXBuildFile; fileRef = BB000040 /* PrivacyInfo.xcprivacy */; };
+		AA000041 /* PortalAuthBridge.swift in Sources */ = {isa = PBXBuildFile; fileRef = BB000041 /* PortalAuthBridge.swift */; };
+		AA000042 /* BiometricAuthService.swift in Sources */ = {isa = PBXBuildFile; fileRef = BB000042 /* BiometricAuthService.swift */; };
+		AA000043 /* HealthKitService.swift in Sources */ = {isa = PBXBuildFile; fileRef = BB000043 /* HealthKitService.swift */; };
+		AA000044 /* HealthKit.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = BB000044 /* HealthKit.framework */; settings = {ATTRIBUTES = (Required, ); }; };
+/* End PBXBuildFile section */
+
+/* Begin PBXFileReference section */
+		BB000001 /* AthleanXApp.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AthleanXApp.swift; sourceTree = "<group>"; };
+		BB000002 /* User.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = User.swift; sourceTree = "<group>"; };
+		BB000003 /* Program.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Program.swift; sourceTree = "<group>"; };
+		BB000004 /* Exercise.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Exercise.swift; sourceTree = "<group>"; };
+		BB000005 /* Nutrition.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Nutrition.swift; sourceTree = "<group>"; };
+		BB000006 /* Progress.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Progress.swift; sourceTree = "<group>"; };
+		BB000007 /* APIClient.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = APIClient.swift; sourceTree = "<group>"; };
+		BB000008 /* AuthService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AuthService.swift; sourceTree = "<group>"; };
+		BB000009 /* WorkoutService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WorkoutService.swift; sourceTree = "<group>"; };
+		BB000010 /* NutritionService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NutritionService.swift; sourceTree = "<group>"; };
+		BB000011 /* AuthViewModel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AuthViewModel.swift; sourceTree = "<group>"; };
+		BB000012 /* DashboardViewModel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DashboardViewModel.swift; sourceTree = "<group>"; };
+		BB000013 /* ProgramViewModel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ProgramViewModel.swift; sourceTree = "<group>"; };
+		BB000014 /* WorkoutSessionViewModel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WorkoutSessionViewModel.swift; sourceTree = "<group>"; };
+		BB000015 /* NutritionViewModel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NutritionViewModel.swift; sourceTree = "<group>"; };
+		BB000016 /* ProgressViewModel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ProgressViewModel.swift; sourceTree = "<group>"; };
+		BB000017 /* OnboardingView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OnboardingView.swift; sourceTree = "<group>"; };
+		BB000018 /* AthleanTabView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AthleanTabView.swift; sourceTree = "<group>"; };
+		BB000019 /* DashboardView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DashboardView.swift; sourceTree = "<group>"; };
+		BB000020 /* ProgramLibraryView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ProgramLibraryView.swift; sourceTree = "<group>"; };
+		BB000021 /* ProgramDetailView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ProgramDetailView.swift; sourceTree = "<group>"; };
+		BB000022 /* ActiveWorkoutView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ActiveWorkoutView.swift; sourceTree = "<group>"; };
+		BB000023 /* ExerciseLibraryView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ExerciseLibraryView.swift; sourceTree = "<group>"; };
+		BB000024 /* VideoPlayerView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = VideoPlayerView.swift; sourceTree = "<group>"; };
+		BB000025 /* NutritionView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NutritionView.swift; sourceTree = "<group>"; };
+		BB000026 /* ProgressView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ProgressView.swift; sourceTree = "<group>"; };
+		BB000027 /* CommunityView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CommunityView.swift; sourceTree = "<group>"; };
+		BB000028 /* ProfileView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ProfileView.swift; sourceTree = "<group>"; };
+		BB000029 /* Constants.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Constants.swift; sourceTree = "<group>"; };
+		BB000030 /* Extensions.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Extensions.swift; sourceTree = "<group>"; };
+		BB000031 /* KeychainManager.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = KeychainManager.swift; sourceTree = "<group>"; };
+		BB000032 /* Assets.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; path = Assets.xcassets; sourceTree = "<group>"; };
+		BB000033 /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist.xml; path = Info.plist; sourceTree = "<group>"; };
+		BB000034 /* WorkoutReminderService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WorkoutReminderService.swift; sourceTree = "<group>"; };
+		BB000035 /* CacheService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CacheService.swift; sourceTree = "<group>"; };
+		BB000036 /* ProgramSelectorView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ProgramSelectorView.swift; sourceTree = "<group>"; };
+		BB000037 /* AbGeneratorView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AbGeneratorView.swift; sourceTree = "<group>"; };
+		BB000038 /* PortalWebView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PortalWebView.swift; sourceTree = "<group>"; };
+		BB000039 /* EmptyStateView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = EmptyStateView.swift; sourceTree = "<group>"; };
+		BB000040 /* PrivacyInfo.xcprivacy */ = {isa = PBXFileReference; lastKnownFileType = text.plist.xml; path = PrivacyInfo.xcprivacy; sourceTree = "<group>"; };
+		BB000041 /* PortalAuthBridge.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PortalAuthBridge.swift; sourceTree = "<group>"; };
+		BB000042 /* BiometricAuthService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BiometricAuthService.swift; sourceTree = "<group>"; };
+		BB000043 /* HealthKitService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HealthKitService.swift; sourceTree = "<group>"; };
+		BB000044 /* HealthKit.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = HealthKit.framework; path = System/Library/Frameworks/HealthKit.framework; sourceTree = SDKROOT; };
+		CC000001 /* AthleanX.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = AthleanX.app; sourceTree = BUILT_PRODUCTS_DIR; };
+/* End PBXFileReference section */
+
+/* Begin PBXFrameworksBuildPhase section */
+		DD000001 /* Frameworks */ = {
+			isa = PBXFrameworksBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				AA000044 /* HealthKit.framework in Frameworks */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXFrameworksBuildPhase section */
+
+/* Begin PBXGroup section */
+		EE000001 /* AthleanX */ = {
+			isa = PBXGroup;
+			children = (
+				EE000010 /* App */,
+				EE000011 /* Models */,
+				EE000012 /* Services */,
+				EE000013 /* ViewModels */,
+				EE000014 /* Views */,
+				EE000015 /* Utilities */,
+				EE000016 /* Resources */,
+			);
+			path = AthleanX;
+			sourceTree = "<group>";
+		};
+		EE000010 /* App */ = {
+			isa = PBXGroup;
+			children = (
+				BB000001 /* AthleanXApp.swift */,
+			);
+			path = App;
+			sourceTree = "<group>";
+		};
+		EE000011 /* Models */ = {
+			isa = PBXGroup;
+			children = (
+				BB000002 /* User.swift */,
+				BB000003 /* Program.swift */,
+				BB000004 /* Exercise.swift */,
+				BB000005 /* Nutrition.swift */,
+				BB000006 /* Progress.swift */,
+			);
+			path = Models;
+			sourceTree = "<group>";
+		};
+		EE000012 /* Services */ = {
+			isa = PBXGroup;
+			children = (
+				BB000007 /* APIClient.swift */,
+				BB000008 /* AuthService.swift */,
+				BB000009 /* WorkoutService.swift */,
+				BB000010 /* NutritionService.swift */,
+				BB000034 /* WorkoutReminderService.swift */,
+				BB000035 /* CacheService.swift */,
+				BB000041 /* PortalAuthBridge.swift */,
+				BB000042 /* BiometricAuthService.swift */,
+				BB000043 /* HealthKitService.swift */,
+			);
+			path = Services;
+			sourceTree = "<group>";
+		};
+		EE000030 /* Frameworks */ = {
+			isa = PBXGroup;
+			children = (
+				BB000044 /* HealthKit.framework */,
+			);
+			name = Frameworks;
+			sourceTree = "<group>";
+		};
+		EE000013 /* ViewModels */ = {
+			isa = PBXGroup;
+			children = (
+				BB000011 /* AuthViewModel.swift */,
+				BB000012 /* DashboardViewModel.swift */,
+				BB000013 /* ProgramViewModel.swift */,
+				BB000014 /* WorkoutSessionViewModel.swift */,
+				BB000015 /* NutritionViewModel.swift */,
+				BB000016 /* ProgressViewModel.swift */,
+			);
+			path = ViewModels;
+			sourceTree = "<group>";
+		};
+		EE000014 /* Views */ = {
+			isa = PBXGroup;
+			children = (
+				EE000020 /* Auth */,
+				EE000021 /* Components */,
+				EE000022 /* Dashboard */,
+				EE000023 /* Programs */,
+				EE000024 /* Workout */,
+				EE000025 /* Nutrition */,
+				EE000026 /* Progress */,
+				EE000027 /* Community */,
+				EE000028 /* Profile */,
+			);
+			path = Views;
+			sourceTree = "<group>";
+		};
+		EE000020 /* Auth */ = {
+			isa = PBXGroup;
+			children = (
+				BB000017 /* OnboardingView.swift */,
+			);
+			path = Auth;
+			sourceTree = "<group>";
+		};
+		EE000021 /* Components */ = {
+			isa = PBXGroup;
+			children = (
+				BB000018 /* AthleanTabView.swift */,
+				BB000024 /* VideoPlayerView.swift */,
+				BB000038 /* PortalWebView.swift */,
+				BB000039 /* EmptyStateView.swift */,
+			);
+			path = Components;
+			sourceTree = "<group>";
+		};
+		EE000022 /* Dashboard */ = {
+			isa = PBXGroup;
+			children = (
+				BB000019 /* DashboardView.swift */,
+			);
+			path = Dashboard;
+			sourceTree = "<group>";
+		};
+		EE000023 /* Programs */ = {
+			isa = PBXGroup;
+			children = (
+				BB000020 /* ProgramLibraryView.swift */,
+				BB000021 /* ProgramDetailView.swift */,
+				BB000036 /* ProgramSelectorView.swift */,
+			);
+			path = Programs;
+			sourceTree = "<group>";
+		};
+		EE000024 /* Workout */ = {
+			isa = PBXGroup;
+			children = (
+				BB000022 /* ActiveWorkoutView.swift */,
+				BB000023 /* ExerciseLibraryView.swift */,
+				BB000037 /* AbGeneratorView.swift */,
+			);
+			path = Workout;
+			sourceTree = "<group>";
+		};
+		EE000025 /* Nutrition */ = {
+			isa = PBXGroup;
+			children = (
+				BB000025 /* NutritionView.swift */,
+			);
+			path = Nutrition;
+			sourceTree = "<group>";
+		};
+		EE000026 /* Progress */ = {
+			isa = PBXGroup;
+			children = (
+				BB000026 /* ProgressView.swift */,
+			);
+			path = Progress;
+			sourceTree = "<group>";
+		};
+		EE000027 /* Community */ = {
+			isa = PBXGroup;
+			children = (
+				BB000027 /* CommunityView.swift */,
+			);
+			path = Community;
+			sourceTree = "<group>";
+		};
+		EE000028 /* Profile */ = {
+			isa = PBXGroup;
+			children = (
+				BB000028 /* ProfileView.swift */,
+			);
+			path = Profile;
+			sourceTree = "<group>";
+		};
+		EE000015 /* Utilities */ = {
+			isa = PBXGroup;
+			children = (
+				BB000029 /* Constants.swift */,
+				BB000030 /* Extensions.swift */,
+				BB000031 /* KeychainManager.swift */,
+			);
+			path = Utilities;
+			sourceTree = "<group>";
+		};
+		EE000016 /* Resources */ = {
+			isa = PBXGroup;
+			children = (
+				BB000032 /* Assets.xcassets */,
+				BB000033 /* Info.plist */,
+				BB000040 /* PrivacyInfo.xcprivacy */,
+			);
+			path = Resources;
+			sourceTree = "<group>";
+		};
+		EE000099 /* Products */ = {
+			isa = PBXGroup;
+			children = (
+				CC000001 /* AthleanX.app */,
+			);
+			name = Products;
+			sourceTree = "<group>";
+		};
+		EE000000 = {
+			isa = PBXGroup;
+			children = (
+				EE000001 /* AthleanX */,
+				EE000030 /* Frameworks */,
+				EE000099 /* Products */,
+			);
+			sourceTree = "<group>";
+		};
+/* End PBXGroup section */
+
+/* Begin PBXNativeTarget section */
+		FF000001 /* AthleanX */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = FF000010 /* Build configuration list for PBXNativeTarget "AthleanX" */;
+			buildPhases = (
+				FF000020 /* Sources */,
+				DD000001 /* Frameworks */,
+				FF000030 /* Resources */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+			);
+			name = AthleanX;
+			productName = AthleanX;
+			productReference = CC000001 /* AthleanX.app */;
+			productType = "com.apple.product-type.application";
+		};
+/* End PBXNativeTarget section */
+
+/* Begin PBXProject section */
+		FF000099 /* Project object */ = {
+			isa = PBXProject;
+			attributes = {
+				BuildIndependentTargetsInParallel = 1;
+				LastSwiftUpdateCheck = 1530;
+				LastUpgradeCheck = 1530;
+				TargetAttributes = {
+					FF000001 = {
+						CreatedOnToolsVersion = 15.3;
+					};
+				};
+			};
+			buildConfigurationList = FF000011 /* Build configuration list for PBXProject "AthleanX" */;
+			compatibilityVersion = "Xcode 14.0";
+			developmentRegion = en;
+			hasScannedForEncodings = 0;
+			knownRegions = (
+				en,
+				Base,
+			);
+			mainGroup = EE000000;
+			productRefGroup = EE000099 /* Products */;
+			projectDirPath = "";
+			projectRoot = "";
+			targets = (
+				FF000001 /* AthleanX */,
+			);
+		};
+/* End PBXProject section */
+
+/* Begin PBXResourcesBuildPhase section */
+		FF000030 /* Resources */ = {
+			isa = PBXResourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				AA000032 /* Assets.xcassets in Resources */,
+				AA000040 /* PrivacyInfo.xcprivacy in Resources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXResourcesBuildPhase section */
+
+/* Begin PBXSourcesBuildPhase section */
+		FF000020 /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				AA000001 /* AthleanXApp.swift in Sources */,
+				AA000002 /* User.swift in Sources */,
+				AA000003 /* Program.swift in Sources */,
+				AA000004 /* Exercise.swift in Sources */,
+				AA000005 /* Nutrition.swift in Sources */,
+				AA000006 /* Progress.swift in Sources */,
+				AA000007 /* APIClient.swift in Sources */,
+				AA000008 /* AuthService.swift in Sources */,
+				AA000009 /* WorkoutService.swift in Sources */,
+				AA000010 /* NutritionService.swift in Sources */,
+				AA000011 /* AuthViewModel.swift in Sources */,
+				AA000012 /* DashboardViewModel.swift in Sources */,
+				AA000013 /* ProgramViewModel.swift in Sources */,
+				AA000014 /* WorkoutSessionViewModel.swift in Sources */,
+				AA000015 /* NutritionViewModel.swift in Sources */,
+				AA000016 /* ProgressViewModel.swift in Sources */,
+				AA000017 /* OnboardingView.swift in Sources */,
+				AA000018 /* AthleanTabView.swift in Sources */,
+				AA000019 /* DashboardView.swift in Sources */,
+				AA000020 /* ProgramLibraryView.swift in Sources */,
+				AA000021 /* ProgramDetailView.swift in Sources */,
+				AA000022 /* ActiveWorkoutView.swift in Sources */,
+				AA000023 /* ExerciseLibraryView.swift in Sources */,
+				AA000024 /* VideoPlayerView.swift in Sources */,
+				AA000025 /* NutritionView.swift in Sources */,
+				AA000026 /* ProgressView.swift in Sources */,
+				AA000027 /* CommunityView.swift in Sources */,
+				AA000028 /* ProfileView.swift in Sources */,
+				AA000029 /* Constants.swift in Sources */,
+				AA000030 /* Extensions.swift in Sources */,
+				AA000031 /* KeychainManager.swift in Sources */,
+				AA000034 /* WorkoutReminderService.swift in Sources */,
+				AA000035 /* CacheService.swift in Sources */,
+				AA000036 /* ProgramSelectorView.swift in Sources */,
+				AA000037 /* AbGeneratorView.swift in Sources */,
+				AA000038 /* PortalWebView.swift in Sources */,
+				AA000039 /* EmptyStateView.swift in Sources */,
+				AA000041 /* PortalAuthBridge.swift in Sources */,
+				AA000042 /* BiometricAuthService.swift in Sources */,
+				AA000043 /* HealthKitService.swift in Sources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXSourcesBuildPhase section */
+
+/* Begin XCBuildConfiguration section */
+		FF000040 /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ALWAYS_SEARCH_USER_PATHS = NO;
+				ASSETCATALOG_COMPILER_GENERATE_SWIFT_ASSET_SYMBOL_EXTENSIONS = YES;
+				CLANG_ANALYZER_NONNULL = YES;
+				CLANG_ANALYZER_NUMBER_OBJECT_CONVERSION = YES_AGGRESSIVE;
+				CLANG_CXX_LANGUAGE_STANDARD = "gnu++20";
+				CLANG_ENABLE_MODULES = YES;
+				CLANG_ENABLE_OBJC_ARC = YES;
+				CLANG_ENABLE_OBJC_WEAK = YES;
+				CLANG_WARN_BLOCK_CAPTURE_AUTORELEASING = YES;
+				CLANG_WARN_BOOL_CONVERSION = YES;
+				CLANG_WARN_COMMA = YES;
+				CLANG_WARN_CONSTANT_CONVERSION = YES;
+				CLANG_WARN_DEPRECATED_OBJC_IMPLEMENTATIONS = YES;
+				CLANG_WARN_DIRECT_OBJC_ISA_USAGE = YES_ERROR;
+				CLANG_WARN_DOCUMENTATION_COMMENTS = YES;
+				CLANG_WARN_EMPTY_BODY = YES;
+				CLANG_WARN_ENUM_CONVERSION = YES;
+				CLANG_WARN_INFINITE_RECURSION = YES;
+				CLANG_WARN_INT_CONVERSION = YES;
+				CLANG_WARN_NON_LITERAL_NULL_CONVERSION = YES;
+				CLANG_WARN_OBJC_IMPLICIT_RETAIN_CYCLE = YES;
+				CLANG_WARN_OBJC_LITERAL_CONVERSION = YES;
+				CLANG_WARN_OBJC_ROOT_CLASS = YES_ERROR;
+				CLANG_WARN_QUOTED_INCLUDE_IN_FRAMEWORK_HEADER = YES;
+				CLANG_WARN_RANGE_LOOP_ANALYSIS = YES;
+				CLANG_WARN_STRICT_PROTOTYPES = YES;
+				CLANG_WARN_SUSPICIOUS_MOVE = YES;
+				CLANG_WARN_UNGUARDED_AVAILABILITY = YES_AGGRESSIVE;
+				CLANG_WARN_UNREACHABLE_CODE = YES;
+				CLANG_WARN__DUPLICATE_METHOD_MATCH = YES;
+				COPY_PHASE_STRIP = NO;
+				DEBUG_INFORMATION_FORMAT = dwarf;
+				ENABLE_STRICT_OBJC_MSGSEND = YES;
+				ENABLE_TESTABILITY = YES;
+				ENABLE_USER_SCRIPT_SANDBOXING = YES;
+				GCC_C_LANGUAGE_STANDARD = gnu17;
+				GCC_DYNAMIC_NO_PIC = NO;
+				GCC_NO_COMMON_BLOCKS = YES;
+				GCC_OPTIMIZATION_LEVEL = 0;
+				GCC_PREPROCESSOR_DEFINITIONS = (
+					"DEBUG=1",
+					"$(inherited)",
+				);
+				GCC_WARN_64_TO_32_BIT_CONVERSION = YES;
+				GCC_WARN_ABOUT_RETURN_TYPE = YES_ERROR;
+				GCC_WARN_UNDECLARED_SELECTOR = YES;
+				GCC_WARN_UNINITIALIZED_AUTOS = YES_AGGRESSIVE;
+				GCC_WARN_UNUSED_FUNCTION = YES;
+				GCC_WARN_UNUSED_VARIABLE = YES;
+				IPHONEOS_DEPLOYMENT_TARGET = 17.0;
+				MTL_ENABLE_DEBUG_INFO = INCLUDE_SOURCE;
+				MTL_FAST_MATH = YES;
+				ONLY_ACTIVE_ARCH = YES;
+				SDKROOT = iphoneos;
+				SWIFT_ACTIVE_COMPILATION_CONDITIONS = "DEBUG $(inherited)";
+				SWIFT_OPTIMIZATION_LEVEL = "-Onone";
+			};
+			name = Debug;
+		};
+		FF000041 /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ALWAYS_SEARCH_USER_PATHS = NO;
+				ASSETCATALOG_COMPILER_GENERATE_SWIFT_ASSET_SYMBOL_EXTENSIONS = YES;
+				CLANG_ANALYZER_NONNULL = YES;
+				CLANG_ANALYZER_NUMBER_OBJECT_CONVERSION = YES_AGGRESSIVE;
+				CLANG_CXX_LANGUAGE_STANDARD = "gnu++20";
+				CLANG_ENABLE_MODULES = YES;
+				CLANG_ENABLE_OBJC_ARC = YES;
+				CLANG_ENABLE_OBJC_WEAK = YES;
+				CLANG_WARN_BLOCK_CAPTURE_AUTORELEASING = YES;
+				CLANG_WARN_BOOL_CONVERSION = YES;
+				CLANG_WARN_COMMA = YES;
+				CLANG_WARN_CONSTANT_CONVERSION = YES;
+				CLANG_WARN_DEPRECATED_OBJC_IMPLEMENTATIONS = YES;
+				CLANG_WARN_DIRECT_OBJC_ISA_USAGE = YES_ERROR;
+				CLANG_WARN_DOCUMENTATION_COMMENTS = YES;
+				CLANG_WARN_EMPTY_BODY = YES;
+				CLANG_WARN_ENUM_CONVERSION = YES;
+				CLANG_WARN_INFINITE_RECURSION = YES;
+				CLANG_WARN_INT_CONVERSION = YES;
+				CLANG_WARN_NON_LITERAL_NULL_CONVERSION = YES;
+				CLANG_WARN_OBJC_IMPLICIT_RETAIN_CYCLE = YES;
+				CLANG_WARN_OBJC_LITERAL_CONVERSION = YES;
+				CLANG_WARN_OBJC_ROOT_CLASS = YES_ERROR;
+				CLANG_WARN_QUOTED_INCLUDE_IN_FRAMEWORK_HEADER = YES;
+				CLANG_WARN_RANGE_LOOP_ANALYSIS = YES;
+				CLANG_WARN_STRICT_PROTOTYPES = YES;
+				CLANG_WARN_SUSPICIOUS_MOVE = YES;
+				CLANG_WARN_UNGUARDED_AVAILABILITY = YES_AGGRESSIVE;
+				CLANG_WARN_UNREACHABLE_CODE = YES;
+				CLANG_WARN__DUPLICATE_METHOD_MATCH = YES;
+				COPY_PHASE_STRIP = NO;
+				DEBUG_INFORMATION_FORMAT = "dwarf-with-dsym";
+				ENABLE_NS_ASSERTIONS = NO;
+				ENABLE_STRICT_OBJC_MSGSEND = YES;
+				ENABLE_USER_SCRIPT_SANDBOXING = YES;
+				GCC_C_LANGUAGE_STANDARD = gnu17;
+				GCC_NO_COMMON_BLOCKS = YES;
+				GCC_WARN_64_TO_32_BIT_CONVERSION = YES;
+				GCC_WARN_ABOUT_RETURN_TYPE = YES_ERROR;
+				GCC_WARN_UNDECLARED_SELECTOR = YES;
+				GCC_WARN_UNINITIALIZED_AUTOS = YES_AGGRESSIVE;
+				GCC_WARN_UNUSED_FUNCTION = YES;
+				GCC_WARN_UNUSED_VARIABLE = YES;
+				IPHONEOS_DEPLOYMENT_TARGET = 17.0;
+				MTL_FAST_MATH = YES;
+				SDKROOT = iphoneos;
+				SWIFT_COMPILATION_MODE = wholemodule;
+				VALIDATE_PRODUCT = YES;
+			};
+			name = Release;
+		};
+		FF000042 /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
+				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 1;
+				DEVELOPMENT_ASSET_PATHS = "";
+				ENABLE_PREVIEWS = YES;
+				GENERATE_INFOPLIST_FILE = NO;
+				CODE_SIGN_ENTITLEMENTS = AthleanX/Resources/AthleanX.entitlements;
+				INFOPLIST_FILE = AthleanX/Resources/Info.plist;
+				IPHONEOS_DEPLOYMENT_TARGET = 17.0;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+				);
+				MARKETING_VERSION = 1.0;
+				PRODUCT_BUNDLE_IDENTIFIER = com.athleanx.portal;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SUPPORTED_PLATFORMS = iphoneos;
+				SUPPORTS_MACCATALYST = NO;
+				SWIFT_EMIT_LOC_STRINGS = YES;
+				SWIFT_VERSION = 5.0;
+				TARGETED_DEVICE_FAMILY = 1;
+			};
+			name = Debug;
+		};
+		FF000043 /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
+				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 1;
+				DEVELOPMENT_ASSET_PATHS = "";
+				ENABLE_PREVIEWS = YES;
+				GENERATE_INFOPLIST_FILE = NO;
+				CODE_SIGN_ENTITLEMENTS = AthleanX/Resources/AthleanX.entitlements;
+				INFOPLIST_FILE = AthleanX/Resources/Info.plist;
+				IPHONEOS_DEPLOYMENT_TARGET = 17.0;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+				);
+				MARKETING_VERSION = 1.0;
+				PRODUCT_BUNDLE_IDENTIFIER = com.athleanx.portal;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SUPPORTED_PLATFORMS = iphoneos;
+				SUPPORTS_MACCATALYST = NO;
+				SWIFT_EMIT_LOC_STRINGS = YES;
+				SWIFT_VERSION = 5.0;
+				TARGETED_DEVICE_FAMILY = 1;
+			};
+			name = Release;
+		};
+/* End XCBuildConfiguration section */
+
+/* Begin XCConfigurationList section */
+		FF000010 /* Build configuration list for PBXNativeTarget "AthleanX" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				FF000042 /* Debug */,
+				FF000043 /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Release;
+		};
+		FF000011 /* Build configuration list for PBXProject "AthleanX" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				FF000040 /* Debug */,
+				FF000041 /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Release;
+		};
+/* End XCConfigurationList section */
+
+	};
+	rootObject = FF000099 /* Project object */;
+}
